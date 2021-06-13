@@ -47,6 +47,8 @@ docker save -o rootfs.tar
 ```
 ./ioxclient package .
 ```
+* [For more information and how to install on IOx.](https://www.cisco.com/c/en/us/support/docs/routers/1101-industrial-integrated-services-router/214383-build-and-deploy-a-docker-iox-package-fo.html#anc7)
+
 ### For other ARM 64-bit architecture.
 * Add command to dockerfile
 ```
