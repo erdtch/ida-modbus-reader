@@ -1,6 +1,6 @@
 FROM arm64v8/alpine:3.7
 COPY qemu-aarch64-static /usr/bin
-RUN apk add --no-cache python py-pip py-mysqldb
+RUN apk add --no-cache python py-pip py-mysqldb git
 RUN rm -rf /var/cache/apk/*
 RUN mkdir modbus_ida
 COPY webapp /modbus_ida/webapp
