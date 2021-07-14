@@ -37,6 +37,16 @@ LOGFILE_DIR = os.getenv("CAF_APP_LOG_DIR", "/tmp")
 appconfig = SafeConfigParser()
 appconfig.read(APP_CONFIG)
 
+# Write time interval to old app_config.ini if not exist. (version 1.1)
+def initInterval():
+    try:
+        TIME_INTERVAL = int(appconfig.get('TIME_INTERVAL', 'timeInterval'))
+    except:
+        cfgfile = open(APP_CONFIG, "w")
+        appconfig.add_section("TIME_INTERVAL")
+        appconfig.set("TIME_INTERVAL", "timeInterval", "60")
+        appconfig.write(cfgfile)
+
 def setup_logging():
     """
     Setup logging for the current module and dependent libraries based on
@@ -73,7 +83,7 @@ def setup_logging():
     else:
         log_file_path = os.path.join(LOGFILE_DIR, "modbus_app.log")
 
-    # Define cap of the log file at 1 MB x 3 backups
+    # Define cap of the log file at 1 MB x 3 backups.
     rfh = RotatingFileHandler(log_file_path, maxBytes=3096*3096, backupCount=3)
     rfh.setLevel(loglevel)
     rfh.setFormatter(formatter)
@@ -82,6 +92,7 @@ def setup_logging():
 logger = logging.getLogger("modbus_ida")
 setup_logging()
 
+initInterval() # Create time interval config (if not exist.)
 DB_USERNAME = appconfig.get('SQLALCHEMY_CONFIG', 'username')
 DB_PASSWORD = appconfig.get('SQLALCHEMY_CONFIG', 'password')
 DB_IP = appconfig.get('SQLALCHEMY_CONFIG', 'ip')
@@ -581,6 +592,19 @@ def getModbusType(name,cardList):
         pass
     return resultList
 
+# Write time interval to app_config.ini
+def writeInterval(interval):
+    if interval == "":
+        return("Failed: Interval cannot be blank.")
+    try:
+        tempInterval = int(interval)
+    except:
+        return("Failed: Interval can only be numeric character(s).")
+    cfgfile = open(APP_CONFIG, "w")
+    appconfig.set("TIME_INTERVAL", "timeInterval", interval)
+    appconfig.write(cfgfile)
+    return("Passed")
+
 """
     GET index.html
     * Display current uRCONNECT's config.
@@ -599,8 +623,9 @@ def index():
     executeCommand = "SELECT * FROM address_mapping"
     cursor.execute(executeCommand)
     result = cursor.fetchall()
+    interval = int(appconfig.get('TIME_INTERVAL', 'timeInterval'))
     connection.close()
-    return render_template('index.html', name=current_user.name, result=result, tab=tab, data=data)
+    return render_template('index.html', name=current_user.name, result=result, tab=tab, data=data, interval=interval)
 
 """
     POST index.html
@@ -635,6 +660,11 @@ def index_post():
         flash(checked)
         return redirect('index')
     checked = inputChecker(ip, unitid, devicename, oldip, oldunitid, oldname)
+    if checked != "Passed":
+        flash(checked)
+        return redirect('index')
+    interval = str(request.form.get("interval"))
+    checked = writeInterval(interval)
     if checked != "Passed":
         flash(checked)
         return redirect('index')
@@ -1011,14 +1041,22 @@ def threadedModbus():
     except:
         pass
 
+    """
+        1. Get time interval value from app_config.ini
+        2. Read data from uRCONNECT using pyModbusTCP.
+        3. Append read data to JSON variable
+        4. Send JSON to NEXPIE.
+        5. Wait for x second(s) [x = time interval]
+    """
     while True:
         try:
+            TIME_INTERVAL = int(appconfig.get('TIME_INTERVAL', 'timeInterval'))
             dataShadow = modbusRead(urconnectList, addressList, powermeterList)
             payloadPost(dataShadow, credentials)
-            time.sleep(60)
+            time.sleep(TIME_INTERVAL)
         except:
             logger.debug("Modbus reader error - Please check your configuration.")
-            time.sleep(5)
+            time.sleep(10)
 
 """
     * Application init.

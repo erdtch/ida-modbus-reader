@@ -12,10 +12,10 @@ CURRENT_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 
 VERSION = os.path.join(CURRENT_DIRECTORY, "version.txt")
 WEBAPP_FOLDER = os.path.join(CURRENT_DIRECTORY, "webapp", "")
-MODBUS_IDA = os.path.join(CURRENT_DIRECTORY, "modbus_ida", "")
+MODBUS_IDA = os.path.join(CURRENT_DIRECTORY, "ida-modbus-reader", "")
 APPFILE = os.path.join(CURRENT_DIRECTORY, "webapp", "webapp.py")
-GIT_FOLDER = os.path.join(CURRENT_DIRECTORY, "modbus_ida", ".git", "")
-WEBAPP_TEMP = os.path.join(CURRENT_DIRECTORY, "modbus_ida", "webapp", "")
+GIT_FOLDER = os.path.join(CURRENT_DIRECTORY, "ida-modbus-reader", ".git", "")
+WEBAPP_TEMP = os.path.join(CURRENT_DIRECTORY, "ida-modbus-reader", "webapp", "")
 REQ = os.path.join(CURRENT_DIRECTORY, "webapp" ,"req", "requirements.txt")
 
 # pip install.

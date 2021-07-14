@@ -65,22 +65,26 @@
         </form>
       </div>
       <form method="POST" action="/index">
-        <div class="config" style="align-items: center;justify-content:center;display: flex">
-          <table cellspacing="0" cellpadding="0" style="width:60%">
+        <div class="config" style="align-items: center;justify-content:center;display: flex;">
+          <table cellspacing="0" cellpadding="0" style="width: 65%">
             <tr style="border">
-              <td style="border: none"><label for={{ datarow[13] }}>Device Name:&nbsp;</label>
+              <td style="width: 34%;border: none"><label for={{ datarow[13] }}>Device Name:&nbsp;</label>
                 <input type="text" id="devicename" name={{ datarow[13] }} onblur="validate()" maxlength="30" value={{ datarow[6] }}>
                 <div id="devicename_alert">&nbsp;</div>
               </td>
-              <td style="border: none"><label for={{ datarow[8] }}>IP Address:&nbsp;</label>
-                <input type="text" id="ipaddress" name={{ datarow[8] }} maxlength="15" onblur="validate()" value={{ datarow[2] }}>
+              <td style="width: 25%;border: none"><label for={{ datarow[8] }}>IP Address:&nbsp;</label>
+                <input type="text" id="ipaddress" name={{ datarow[8] }} style="width: 45%" maxlength="15" onblur="validate()" value={{ datarow[2] }}>
                 <div id="ipaddress_alert">&nbsp;</div>
               </td>
-              <td style="border: none"><label for={{ datarow[9] }}>Unit ID:&nbsp;</label>
-                <input type="text" id="unitid" name={{ datarow[9] }} maxlength="15" onblur="validate()" value={{ datarow[1] }}>
+              <td style="width: 15%;border: none"><label for={{ datarow[9] }}>Unit ID:&nbsp;</label>
+                <input type="text" id="unitid" name={{ datarow[9] }} style="width: 30%" maxlength="3" onblur="validate()" value={{ datarow[1] }}>
                 <div id="unitid_alert">&nbsp;</div>
               </td>
-              <td style="border: none">
+              <td style="width: 16%;border: none"><label for="interval">Interval :&nbsp;</label>
+                <input type="text" id="interval" name="interval" style="width: 30%" maxlength="5" onblur="validate()" value={{ interval }}>
+                <div id="unitid_alert">&nbsp;</div>
+              </td>
+              <td style="width: 10%;border: none">
                 {% if datarow[4] == "enabled" %}
                 <input type="checkbox" id="status" name={{ datarow[10] }} value="enabled" checked>
                 {% else %}

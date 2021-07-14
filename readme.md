@@ -1,10 +1,16 @@
 # modbus_ida
 <br>
 <p align="center">
-    <img src="/webapp/static/images/platelet.gif" width="700" height="394">
+    <img src="/webapp/static/images/ida_platform.jpg" width="800" height="418">
 </p>
 
 ## Details
+### Patch Note
+```
+v1.1
+- Add custom time interval function.
+- Fix index.html user interface.
+```
 ### Requirements (requirements.txt)
 * Python v2.7
 * Flask
