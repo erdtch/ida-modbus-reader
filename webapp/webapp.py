@@ -989,7 +989,7 @@ def modbusRead(urconnectList, addressList, powermeterList):
                     quantity = int(powermeterList[num][2])
                 name = str(powermeterList[num][0]) # label
                 name = name.replace(" ","") # Remove space.
-                data = client.read_input_registers(startingAddress, quantity) # Return list that contains integer.
+                data = client.read_holding_registers(startingAddress, quantity) # Return list that contains integer.
                 try:
                     payloadDict["data"][UNITNAME]["Module"]["powermeter"][name] = data
                 except:

@@ -7,9 +7,13 @@
 ## Details
 ### Patch Note
 ```
-v1.1
 - Add custom time interval function.
 - Fix index.html user interface.
+- Fix power meter register problem.
+```
+### Roadmap
+```
+- Add autoupdate function.
 ```
 ### Requirements (requirements.txt)
 * Python v2.7
