@@ -7,13 +7,13 @@
 ## Details
 ### Patch Note
 ```
-- Add custom time interval function.
-- Fix index.html user interface.
-- Fix power meter register problem.
+- Remake Power meter reader.
+- Remake uRCONNECT reader.
 ```
-### Roadmap
+### Plan
 ```
 - Add autoupdate function.
+- Add Modbus TCP reader.
 ```
 ### Requirements (requirements.txt)
 * Python v2.7
@@ -72,5 +72,5 @@ docker build -t modbus_ida .
 ```
 * Create docker container from docker image.
 ```
-docker run -ti --restart=always modbus_ida
+docker run -it -d --restart=always -p 6969:6969 your_docker_image
 ```

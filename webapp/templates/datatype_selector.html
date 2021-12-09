@@ -1,0 +1,14 @@
+{% block body %}
+{% for col in datatypes %}
+{% if address[4] == col[1] %}
+  <option value={{ col[1] }}>{{ col[0] }}</option>
+{% endif %}
+{% endfor %}
+
+<!-- then print other model that not selected -->
+{% for col in datatypes %}
+{% if address[4] != col[1] %}
+  <option value={{ col[1] }}>{{ col[0] }}</option>
+{% endif %}
+{% endfor %}
+{% endblock %}

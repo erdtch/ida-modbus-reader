@@ -36,7 +36,9 @@ def githubChecker():
                 print("done")
                 githubLoopChecker = False
             else:
+                print("sth")
                 pass
+
         except:
             print("githubChecker() failed")
             time.sleep(5)
@@ -78,6 +80,6 @@ def updateChecker():
 
 if __name__ == '__main__':
     pipUpdate()
-    githubChecker()
-    updateChecker()
+    #githubChecker()
+    #updateChecker()
     os.system('python '+ APPFILE)

@@ -1,0 +1,11 @@
+FROM arm32v7/alpine:3.10.2
+RUN apk add python py-pip py-mysqldb git
+RUN mkdir modbus_ida
+COPY webapp /modbus_ida/webapp
+RUN pip install -r /modbus_ida/webapp/req/requirements.txt
+COPY app_config.ini /modbus_ida/app_config.ini
+COPY version.txt /modbus_ida/version.txt
+COPY app.py /modbus_ida/app.py
+WORKDIR /modbus_ida
+EXPOSE 6969/tcp
+CMD ["python", "app.py"]

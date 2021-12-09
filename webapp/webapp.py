@@ -6,10 +6,14 @@
 
 import os
 import re
+import sys
+import glob
 import time
 import json
+import wget
 import random
 import string
+import struct
 import pyping
 import logging
 import requests
@@ -29,132 +33,15 @@ from flask_login import LoginManager, login_required ,UserMixin, login_user, log
 from flask import Flask, render_template, request, redirect, url_for, flash, url_for, redirect, session
 
 CURRENT_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
+POWERMETER = os.path.join(CURRENT_DIRECTORY, "powermeter", "")
+POWERMETER_LIBRARY = os.path.join(CURRENT_DIRECTORY, "powermeter")
 APP_CONFIG = os.path.join(os.path.dirname(CURRENT_DIRECTORY), "app_config.ini")
 KEY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cert", "key.pem")
-CERT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cert", "cert.pem")
+CERT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cert", "cert.pem") # Self signed
 LOGFILE_DIR = os.getenv("CAF_APP_LOG_DIR", "/tmp")
-
+sys.path.append(POWERMETER)
 appconfig = SafeConfigParser()
 appconfig.read(APP_CONFIG)
-
-# Write time interval to old app_config.ini if not exist. (version 1.1)
-def initInterval():
-    try:
-        TIME_INTERVAL = int(appconfig.get('TIME_INTERVAL', 'timeInterval'))
-    except:
-        cfgfile = open(APP_CONFIG, "w")
-        appconfig.add_section("TIME_INTERVAL")
-        appconfig.set("TIME_INTERVAL", "timeInterval", "60")
-        appconfig.write(cfgfile)
-
-def setup_logging():
-    """
-    Setup logging for the current module and dependent libraries based on
-    values available in config.
-    """
-    # Set a format which is simpler for console use
-    formatter = logging.Formatter('[%(asctime)s] %(levelname)-8s> %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-
-    # Set log level based on what is defined in package_config.ini file
-    loglevel = appconfig.getint("LOGGING", "log_level")
-    logger.setLevel(loglevel)
-
-    # Create a console handler only if console logging is enabled
-    ce = appconfig.getboolean("LOGGING", "console")
-    if ce:
-        console = logging.StreamHandler()
-        console.setLevel(loglevel)
-        console.setFormatter(formatter)
-        # Add the handler to the root logger
-        logger.addHandler(console)
-
-    def customTime(*args):
-        utc_dt = utc.localize(datetime.utcnow())
-        my_tz = timezone("Asia/Bangkok")
-        converted = utc_dt.astimezone(my_tz)
-        return converted.timetuple()
-
-    logging.Formatter.converter = customTime
-
-    # The default is to use a Rotating File Handler
-
-    if platform.system() == "Windows":
-        log_file_path = os.path.join(CURRENT_DIRECTORY, "modbus_app.log")
-    else:
-        log_file_path = os.path.join(LOGFILE_DIR, "modbus_app.log")
-
-    # Define cap of the log file at 1 MB x 3 backups.
-    rfh = RotatingFileHandler(log_file_path, maxBytes=3096*3096, backupCount=3)
-    rfh.setLevel(loglevel)
-    rfh.setFormatter(formatter)
-    logger.addHandler(rfh)
-
-logger = logging.getLogger("modbus_ida")
-setup_logging()
-
-initInterval() # Create time interval config (if not exist.)
-DB_USERNAME = appconfig.get('SQLALCHEMY_CONFIG', 'username')
-DB_PASSWORD = appconfig.get('SQLALCHEMY_CONFIG', 'password')
-DB_IP = appconfig.get('SQLALCHEMY_CONFIG', 'ip')
-DB_PORT = appconfig.get('SQLALCHEMY_CONFIG', 'port')
-DB_SCHEMA = appconfig.get('SQLALCHEMY_CONFIG', 'schema')
-NEXPIE_URL = appconfig.get('NEXPIE', 'shadow_url')
-
-# Test connection and connect to database server.
-# Initialize application.
-initChecker = True
-while initChecker == True:
-    r = pyping.ping('203.150.37.154')
-    if r.ret_code == 0:
-        try:
-          connection = MySQL.connect(host= DB_IP,
-                                     user = DB_USERNAME,
-                                     passwd = DB_PASSWORD,
-                                     port = DB_PORT)
-          cursor = connection.cursor()
-          executeCommand = "CREATE DATABASE IF NOT EXISTS " + DB_SCHEMA
-          cursor.execute(executeCommand)
-          connection.commit()
-          connection.close()
-
-          app = Flask(__name__)
-          db = SQLAlchemy()
-          db.pool_recycle = 300
-          app.config['SECRET_KEY'] = appconfig.get('APP_INIT', 'secretkey')
-          app.config['SQLALCHEMY_DATABASE_URI'] = "mysql://" + DB_USERNAME + ":" + DB_PASSWORD + "@" + DB_IP + ":" + DB_PORT + "/" + DB_SCHEMA
-          app.config["SQLALCHEMY_POOL_SIZE"] = 20
-          app.config['PERMANENT_SESSION_LIFETIME'] =  timedelta(minutes=5)
-          app.config['SESSION_REFRESH_EACH_REQUEST'] = True
-
-          db.init_app(app)
-
-          login_manager = LoginManager()
-          login_manager.login_view = 'login'
-          login_manager.init_app(app)
-
-        except Exception as e:
-          logger.error("Exception occurred", exc_info=True)
-        initChecker = False
-    else:
-        logger.info("Ping database server: Failed")
-
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True) # primary keys are required by SQLAlchemy
-    username = db.Column(db.String(20), unique=True)
-    password = db.Column(db.String(30))
-    name = db.Column(db.String(100))
-
-@app.before_request
-def func():
-    if not request.is_secure:
-        url = request.url.replace('http://', 'https://', 1)
-        code = 301
-        return redirect(url, code=code)
-
-@login_manager.user_loader
-def load_user(user_id):
-    # since the user_id is just the primary key of our user table, use it in the query for the user.
-    return User.query.get(int(user_id))
 
 # Establish MySQL connection to database server.
 def databaseConnection():
@@ -165,89 +52,28 @@ def databaseConnection():
                            db = DB_SCHEMA)
     return connection
 
-# Load uRCONNECT default config from database server.
-def urconnectSettings():
-    connection = MySQL.connect(host= DB_IP,
-                           user = DB_USERNAME,
-                           passwd = DB_PASSWORD,
-                           port = DB_PORT,
-                           db = "urconnect_settings")
-    return connection
-
-# Change web application's credentials.
-def changePassword(encryptedPassword, name):
-    connection = databaseConnection()
-    cursor = connection.cursor()
-    executeCommand = "UPDATE user SET password = %s WHERE name = %s"
-    cursor.execute(executeCommand, (encryptedPassword, name,))
-    connection.commit()
-    try:
-        connection.close()
-    except:
-        pass
-
-# Delete registered device from database.
-def deleteConfig(ip):
-    connection = databaseConnection()
-    cursor = connection.cursor()
-    executeCommand = "DELETE FROM config WHERE ip = %s"
-    cursor.execute(executeCommand, (ip,))
-    connection.commit()
-    executeCommand = "DELETE FROM address_mapping WHERE ip = %s"
-    cursor.execute(executeCommand, (ip,))
-    connection.commit()
-    executeCommand = "UPDATE config SET tablinks = %s LIMIT 1"
-    cursor.execute(executeCommand, ("tablinks active",))
-    connection.commit()
-    try:
-        connection.close()
-    except:
-        pass
-
-# Check table "address_mapping" on database.
-def checkAddressMapping():
-    connection = databaseConnection()
-    cursor = connection.cursor()
-    try:
-        cursor.execute("SELECT * FROM address_mapping LIMIT 1")
-        result = cursor.fetchall()
-        if result != []:
-            return("Passed")
-    except:
-        cursor.execute("SHOW TABLES like 'address_mapping'")
-        result = cursor.fetchall()
-        if result != []:
-            return("Passed")
-        else:
-            return("Not Passed")
-
-    try:
-        connection.close()
-    except:
-        pass
-
 """
-    Create table "address_mapping" if it isn't exists.
+    Create table "urconnect_address" if it isn't exists.
     * id = PK, id number
     * unitid = unitid of uRCONNECT
     * module = module of uRCONNECT (1down, 2up, 2down, 3up, 3down)
     * channel = module's channel of uRCONNECT (1-8)
-    * type = modbus function code (1-4)
+    * type = modbus function code (FC01-FC04)
     * name = sensor name (you can change if you need.)
     * startingAddress = starting address that script need to read from uRCONNECT.
     * quantity = amount of address that script need to read from uRCONNECT. (e.g. 00001, 2 = read from address 00001 to 00002)
-    * ip = ip address is ip address, yeah I mean it.
+    * ip = ip address is ip address, yeah i mean it.
     * displayAddress = address that you can see from uRCONNECT documents.
     * cardtype = card type (e.g. 4-20mA, digital input, relay)
-    * html**** = position in html file using Jinja template.
+    * unit = unit of value (e.g. mA, V, Celcius)
+    * status = read or not read that address.
 """
-def createAddressMapping():
+def createUrconnectAddress():
     connection = databaseConnection()
     cursor = connection.cursor()
-    executeCommand = ("CREATE TABLE IF NOT EXISTS address_mapping (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, unitid VARCHAR(2) NOT NULL, module VARCHAR(5) NOT NULL, "
+    executeCommand = ("CREATE TABLE IF NOT EXISTS urconnect_address (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, unitid VARCHAR(2) NOT NULL, module VARCHAR(5) NOT NULL, "
     "channel VARCHAR(1) NOT NULL, type VARCHAR(2) NOT NULL, name VARCHAR(30) NOT NULL, startingAddress VARCHAR(5) NOT NULL, "
-    "quantity VARCHAR(5) NOT NULL, ip VARCHAR(15) NOT NULL, htmlmodule VARCHAR(20) NOT NULL, htmlchannel VARCHAR(20) NOT NULL, htmltype VARCHAR(20) NOT NULL, "
-    "htmlname VARCHAR(20) NOT NULL, htmlstart VARCHAR(20) NOT NULL, htmlquantity VARCHAR(20) NOT NULL, htmltypeselector VARCHAR(20) NOT NULL, displayAddress VARCHAR(6) NOT NULL, cardtype VARCHAR(20) NOT NULL)")
+    "quantity VARCHAR(5) NOT NULL, urconnect VARCHAR(40) NOT NULL, displayAddress VARCHAR(6) NOT NULL, cardtype VARCHAR(20) NOT NULL, unit VARCHAR(20), status VARCHAR(20))")
     cursor.execute(executeCommand)
     connection.commit()
     try:
@@ -255,47 +81,66 @@ def createAddressMapping():
     except:
         pass
 
-# Get default power meter address from database.
-def getPowermeter():
-    connection = urconnectSettings()
+"""
+    Create table "powermeter" if it isn't exists.
+    * id = PK, id number
+    * metername = name of power meter.
+    * tablinks = active status of tablinks in powermeter.html
+    * urconnect = urconnect name
+"""
+def createPowermeter():
+    connection = databaseConnection()
     cursor = connection.cursor()
-    executeCommand = "SELECT name, startingAddress, quantity FROM powermeter"
-    cursor.execute(executeCommand)
-    result = cursor.fetchall()
+    executeCommand = ("CREATE TABLE IF NOT EXISTS powermeter (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, metername VARCHAR(40) NOT NULL UNIQUE, "
+    "tablinks VARCHAR(30) NOT NULL, urconnect VARCHAR(50) NOT NULL)")
+    cursor.execute(executeCommand,)
+    connection.commit()
     try:
         connection.close()
     except:
         pass
-    return result
+
+"""
+    Create table "powermeter_address" if it isn't exists.
+    * id = PK, id number
+    * name = name of address that u need to read from powermeter.
+    * address = start address that u need to read from powermeter.
+    * quantity = amount of address that script need to read from powermeter. (e.g. 00001, 2 = read from address 00001 to 00002)
+    * datatype = data type of value that u need to convert to. (e.g. uint32 = convert 2 uint16 to uint32)
+    * realaddress = REAL ADDRESS THAT MY SCRIPT USE TO READ FROM URCONNECT (ALWAYS MINUS ONE FROM address)
+    * modbustype = modbus function code (FC01-FC04)
+    * multiplier = just a multiplier. (converted data MULTIPLIED BY multiplier)
+    * unit = unit of value (e.g. mA, V, Celcius)
+"""
+def createPowermeterAddress():
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = ("CREATE TABLE IF NOT EXISTS powermeter_address (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(40) NOT NULL, address VARCHAR(6), "
+    "quantity VARCHAR(3), datatype VARCHAR(30) NOT NULL, realaddress VARCHAR(6), metername VARCHAR(50) NOT NULL, modbustype VARCHAR(3) NOT NULL, multiplier VARCHAR(20) NOT NULL, unit VARCHAR(20))")
+    cursor.execute(executeCommand,)
+    connection.commit()
+    try:
+        connection.close()
+    except:
+        pass
 
 """
     Create table "nexpie_auth" if it isn't exists.
     * name = NEXPIE device name (it's just a name, don't mind)
     * clientid = NEXPIE device's client id
-    * token = NEXPIE device's username (display as token on nexpie.io)
-    * secret = NEXPIE device's password (display as secret on nexpie.io)
+    * token = NEXPIE device's username (token on nexpie.io)
+    * secret = NEXPIE device's password (secret on nexpie.io)
 """
 def createNexpieAuth():
     connection = databaseConnection()
     cursor = connection.cursor()
-    executeCommand = "CREATE TABLE IF NOT EXISTS nexpie_auth (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(20) NOT NULL, clientid VARCHAR(36) NOT NULL, token VARCHAR(32) NOT NULL, secret VARCHAR(32) NOT NULL)"
+    executeCommand = "CREATE TABLE IF NOT EXISTS nexpie_auth (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50) NOT NULL, clientid VARCHAR(36) NOT NULL, token VARCHAR(32) NOT NULL, secret VARCHAR(32) NOT NULL)"
     cursor.execute(executeCommand)
     connection.commit()
-    executeCommand = "SELECT * FROM nexpie_auth"
-    cursor.execute(executeCommand)
-    result = cursor.fetchall()
-    if result == []:
-        executeCommand = "INSERT INTO nexpie_auth (name, clientid, token, secret) VALUES (%s, %s, %s, %s)"
-        cursor.execute(executeCommand, (("result", "", "", "")))
-        connection.commit()
-    executeCommand = "SELECT clientid, token, secret FROM nexpie_auth"
-    cursor.execute(executeCommand)
-    result = cursor.fetchall()
     try:
         connection.close()
     except:
         pass
-    return result
 
 """
     Create table "user" if it isn't exists.
@@ -334,46 +179,337 @@ def createUser():
     * status = enable or disable
     * tablinks = tablinks active or tablinks (tablinks active will active after load config page (index.html))
     * name = uRCONNECT's name
-    * html**** = position in html file using Jinja template.
 """
-def getConfigData():
+def createConfig():
     connection = databaseConnection()
     cursor = connection.cursor()
-    executeCommand = ("CREATE TABLE IF NOT EXISTS config (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, unitid VARCHAR(2) NOT NULL, ip VARCHAR(15) NOT NULL,"
-    "note VARCHAR(15) NOT NULL, status VARCHAR(10) NOT NULL, tablinks VARCHAR(40) NOT NULL, name VARCHAR(20) NOT NULL, htmltab VARCHAR(15) NOT NULL,"
-    "htmlip VARCHAR(15) NOT NULL, htmlunitid VARCHAR(20) NOT NULL, htmlcheckbox VARCHAR(15) NOT NULL, htmloldunitid VARCHAR(15) NOT NULL, htmloldip VARCHAR(15) NOT NULL, htmldevicename VARCHAR(30),  htmloldname VARCHAR(30))")
+    executeCommand = ("CREATE TABLE IF NOT EXISTS config (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, unitid VARCHAR(2) NOT NULL UNIQUE, ip VARCHAR(15) NOT NULL UNIQUE"
+    ",note VARCHAR(15) NOT NULL, status VARCHAR(10) NOT NULL, tablinks VARCHAR(40) NOT NULL, urconnect VARCHAR(40) NOT NULL UNIQUE, nexpieauth VARCHAR(50))")
     cursor.execute(executeCommand)
     connection.commit()
-    executeCommand = "SELECT * FROM config"
-    cursor.execute(executeCommand)
-    data = cursor.fetchall()
     try:
         connection.close()
     except:
         pass
+
+"""
+    Setup logging for the current module and dependent libraries based on
+    values available in config.
+"""
+def setup_logging():
+    # Set a format which is simpler for console use
+    formatter = logging.Formatter('[%(asctime)s] %(levelname)-8s> %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+    # Set log level based on what is defined in package_config.ini file
+    loglevel = appconfig.getint("LOGGING", "log_level")
+    logger.setLevel(loglevel)
+
+    # Create a console handler only if console logging is enabled
+    ce = appconfig.getboolean("LOGGING", "console")
+    if ce:
+        console = logging.StreamHandler()
+        console.setLevel(loglevel)
+        console.setFormatter(formatter)
+        # Add the handler to the root logger
+        logger.addHandler(console)
+
+    def customTime(*args):
+        utc_dt = utc.localize(datetime.utcnow())
+        my_tz = timezone("Asia/Bangkok")
+        converted = utc_dt.astimezone(my_tz)
+        return converted.timetuple()
+
+    logging.Formatter.converter = customTime
+
+    # The default is to use a Rotating File Handler
+
+    if platform.system() == "Windows":
+        log_file_path = os.path.join(CURRENT_DIRECTORY, "modbus_app.log")
+    else:
+        log_file_path = os.path.join(LOGFILE_DIR, "modbus_app.log")
+
+    # Define cap of the log file at 1 MB x 3 backups.
+    rfh = RotatingFileHandler(log_file_path, maxBytes=3096*3096, backupCount=3)
+    rfh.setLevel(loglevel)
+    rfh.setFormatter(formatter)
+    logger.addHandler(rfh)
+
+# Write time interval to old app_config.ini if not exist. (version 1.1)
+def initInterval():
+    try:
+        TIME_INTERVAL = int(appconfig.get('TIME_INTERVAL', 'timeInterval'))
+    except:
+        cfgfile = open(APP_CONFIG, "w")
+        appconfig.add_section("TIME_INTERVAL")
+        appconfig.set("TIME_INTERVAL", "timeInterval", "60")
+        appconfig.write(cfgfile)
+
+# Load config from app_config.ini
+DB_USERNAME = appconfig.get('SQLALCHEMY_CONFIG', 'username')
+DB_PASSWORD = appconfig.get('SQLALCHEMY_CONFIG', 'password')
+DB_IP = appconfig.get('SQLALCHEMY_CONFIG', 'ip')
+DB_PORT = appconfig.get('SQLALCHEMY_CONFIG', 'port')
+DB_SCHEMA = appconfig.get('SQLALCHEMY_CONFIG', 'schema')
+NEXPIE_URL = appconfig.get('NEXPIE', 'shadow_url')
+jsondata = []
+
+logger = logging.getLogger("modbus_ida")
+setup_logging()
+initInterval() # Create time interval config (if not exist.)
+
+# Test connection and connect to database server.
+# Initialize application.
+initChecker = True
+while initChecker == True:
+    r = pyping.ping('203.150.37.154')
+    if r.ret_code == 0:
+        try:
+            connection = MySQL.connect(host= DB_IP,
+                                       user = DB_USERNAME,
+                                       passwd = DB_PASSWORD,
+                                       port = DB_PORT)
+            cursor = connection.cursor()
+            executeCommand = "CREATE DATABASE IF NOT EXISTS " + DB_SCHEMA
+            cursor.execute(executeCommand)
+            connection.commit()
+            connection.close()
+
+            createUser() # Create user if table "user" have nothing.
+            createUrconnectAddress()
+            createNexpieAuth()
+            createConfig()
+            createPowermeter()
+            createPowermeterAddress()
+
+            app = Flask(__name__)
+            db = SQLAlchemy()
+            db.pool_recycle = 300
+            app.config['SECRET_KEY'] = appconfig.get('APP_INIT', 'secretkey')
+            app.config['SQLALCHEMY_DATABASE_URI'] = "mysql://" + DB_USERNAME + ":" + DB_PASSWORD + "@" + DB_IP + ":" + DB_PORT + "/" + DB_SCHEMA
+            app.config["SQLALCHEMY_POOL_SIZE"] = 20
+            app.config['PERMANENT_SESSION_LIFETIME'] =  timedelta(minutes=15)
+            app.config['SESSION_REFRESH_EACH_REQUEST'] = True
+            db.init_app(app)
+
+            login_manager = LoginManager()
+            login_manager.login_view = 'login'
+            login_manager.init_app(app)
+            initChecker = False
+        except Exception as e:
+          logger.error("Exception occurred", exc_info=True)
+    else:
+        logger.info("Ping database server: Failed")
+
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True) # primary keys are required by SQLAlchemy
+    username = db.Column(db.String(20), unique=True)
+    password = db.Column(db.String(30))
+    name = db.Column(db.String(100))
+
+@login_manager.user_loader
+def load_user(user_id):
+    # since the user_id is just the primary key of our user table, use it in the query for the user.
+    return User.query.get(int(user_id))
+
+# Load uRCONNECT default config from database server.
+def urconnectSettings():
+    connection = MySQL.connect(host= DB_IP,
+                           user = DB_USERNAME,
+                           passwd = DB_PASSWORD,
+                           port = DB_PORT,
+                           db = "urconnect_settings")
+    return connection
+
+# Change web application's credentials.
+def changePassword(encryptedPassword, name):
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "UPDATE user SET password = %s WHERE name = %s"
+    cursor.execute(executeCommand, (encryptedPassword, name,))
+    connection.commit()
+    closeConnection(connection)
+
+# Close database connection
+def closeConnection(connection):
+    try:
+        connection.close()
+    except:
+        pass
+
+# Delete registered device from database.
+def deleteConfig(urconnect):
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT id FROM powermeter WHERE urconnect = %s"
+    cursor.execute(executeCommand, (urconnect,))
+    result = cursor.fetchall()
+    # If selected urconnect not used by any powermeter, then delete urconnect config.
+    if result == []:
+        executeCommand = "DELETE FROM config WHERE urconnect = %s"
+        cursor.execute(executeCommand, (urconnect,))
+        executeCommand = "DELETE FROM urconnect_address WHERE urconnect = %s"
+        cursor.execute(executeCommand, (urconnect,))
+        executeCommand = "UPDATE config SET tablinks = %s LIMIT 1"
+        cursor.execute(executeCommand, ("tablinks active",))
+        connection.commit()
+        try:
+            connection.close()
+        except:
+            pass
+        return("deleted")
+    elif result != []:
+        return("not delete")
+    else:
+        return("failed")
+
+# Get list of power meter from database.
+def getPowermeter():
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT * FROM powermeter"
+    cursor.execute(executeCommand)
+    result = cursor.fetchall()
+    closeConnection(connection)
+    return(result)
+
+# Get list of power meter address from database.
+def getPowermeterAddress():
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT * FROM powermeter_address"
+    cursor.execute(executeCommand)
+    result = cursor.fetchall()
+    closeConnection(connection)
+    return(result)
+
+# Random power meter address name.
+def randomAddressname():
+    randomstring = random.sample(string.ascii_letters, 6)
+    for i in range(0, 6):
+        if i == 0:
+            randomname = ""
+        randomname = randomname + randomstring[i]
+    return(randomname)
+
+# Add new powermeter to database.
+def newPowermeter(powermetername, urconnect):
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT tablinks FROM powermeter WHERE tablinks = %s"
+    cursor.execute(executeCommand, ("tablinks active",))
+    result = cursor.fetchall()
+    # Note: tablinks active = show this tab after GET config page (index.html)
+    if result == []:
+        tablinks = "tablinks active"
+    else:
+        tablinks = "tablinks"
+    executeCommand = ("INSERT INTO powermeter (metername, tablinks, urconnect) VALUES (%s, %s, %s)")
+    cursor.execute(executeCommand, (powermetername, tablinks, urconnect))
+    # Create address for powermeter.
+    for i in range(0, 15):
+        randomname = randomAddressname()
+        executeCommand = ("INSERT INTO powermeter_address (name, datatype, metername, modbustype, multiplier) VALUES (%s, %s, %s, %s, %s)")
+        cursor.execute(executeCommand, (randomname, "none", powermetername, "00", "-"),)
+    connection.commit()
+    closeConnection(connection)
+    return(result)
+
+# Get NEXPIE credentials from database.
+def getNexpieAuth():
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT id, name, clientid, token, secret FROM nexpie_auth"
+    cursor.execute(executeCommand)
+    result = cursor.fetchall()
+    closeConnection(connection)
+    return(result)
+
+# Get NEXPIE device name from database.
+def getCredentialsName():
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT name FROM nexpie_auth"
+    cursor.execute(executeCommand)
+    result = cursor.fetchall()
+    closeConnection(connection)
+    return result
+
+# Delete NEXPIE device from database.
+def deleteCredentials(nexpiename):
+    try:
+        connection = databaseConnection()
+        cursor = connection.cursor()
+        executeCommand = "DELETE FROM nexpie_auth WHERE name = %s"
+        cursor.execute(executeCommand, (nexpiename,))
+        connection.commit()
+        closeConnection(connection)
+    except:
+        return("failed")
+    return("success")
+
+# Get id of NEXPIE device from database. (not clientid)
+def getNexpieID():
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT id FROM nexpie_auth"
+    cursor.execute(executeCommand)
+    result = cursor.fetchall()
+    closeConnection(connection)
+    return result
+
+# Get list of urconncet from database.
+def getConfig():
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT * FROM config"
+    cursor.execute(executeCommand)
+    data = cursor.fetchall()
+    closeConnection(connection)
     return data
 
 # Get value that define tab(s) in config page.
 def getTab():
     connection = databaseConnection()
     cursor = connection.cursor()
-    executeCommand = "SELECT tablinks, htmltab, name FROM config WHERE note = %s"
+    executeCommand = "SELECT tablinks, id, urconnect FROM config WHERE note = %s"
     cursor.execute(executeCommand, ("config",))
     result = cursor.fetchall()
+    closeConnection(connection)
     return result
 
-# Get value that define unitid in config page.
-def getHtmlUnitid():
+# Get value that define tab(s) in config page.
+def getPowermeterTab():
     connection = databaseConnection()
     cursor = connection.cursor()
-    executeCommand = "SELECT htmlunitid FROM config WHERE note = %s"
-    cursor.execute(executeCommand, ("config",))
+    executeCommand = "SELECT tablinks, id, metername FROM powermeter"
+    cursor.execute(executeCommand,)
     result = cursor.fetchall()
+    closeConnection(connection)
     return result
 
-# Add new uRCONNECT to database.
-def newDevice(ip, unitid, checkbox, devicename):
-    # Note: enabled = get value from uRCONNECT, convert to json and send to NEXPIE.
+# Get list of urconnect name from database.
+def getUrconnect():
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT urconnect FROM config"
+    cursor.execute(executeCommand)
+    data = cursor.fetchall()
+    closeConnection(connection)
+    return data
+
+# Get value that define unitid in config page.
+def getConfigID():
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT id FROM config WHERE note = %s"
+    cursor.execute(executeCommand, ("config",))
+    result = cursor.fetchall()
+    closeConnection(connection)
+    return result
+
+# Add new urconnect to database.
+def newDevice(ip, unitid, checkbox, devicename, nexpieauth):
+    # Note: enabled = get value from urconnect, convert to json and send to NEXPIE.
     if checkbox != "enabled":
         checkbox = "disabled"
     connection = databaseConnection()
@@ -392,74 +528,58 @@ def newDevice(ip, unitid, checkbox, devicename):
         number = str(result[0][0])
         tablinks = "tablinks"
     stringunitid = "UnitID:" + str(unitid)
-    htmltab = "unitid" + number
-    htmlip = "ip" + number
-    htmlunitid = "id_unitid" + number
-    htmlcheckbox = "checkbox" + number
-    htmloldunitid = "oldunitid" + number
-    htmloldip = "oldip" + number
-    htmldevicename = "devicename" + number
-    htmloldname = "oldname" + number
-    executeCommand = ("INSERT INTO config (unitid, ip, note, status, tablinks, name,"
-    "htmltab, htmlip, htmlunitid, htmlcheckbox, htmloldunitid, htmloldip, htmldevicename, htmloldname) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
-    cursor.execute(executeCommand, (unitid, ip, "config", checkbox, tablinks, devicename, htmltab, htmlip, htmlunitid, htmlcheckbox, htmloldunitid, htmloldip, htmldevicename, htmloldname))
+    executeCommand = ("INSERT INTO config (unitid, ip, note, status, tablinks, urconnect, nexpieauth) VALUES (%s, %s, %s, %s, %s, %s, %s)")
+    cursor.execute(executeCommand, (unitid, ip, "config", checkbox, tablinks, devicename, nexpieauth))
     connection.commit()
-    try:
-        connection.close()
-    except:
-        pass
-"""
-    * Get last id from table "address_mapping".
-    * We need latest id to generate next id for uRCONNECT address.
-    * e.g. addressMappingLastrow() return 39, id for next 1down from new device is 40 ...
-"""
+    closeConnection(connection)
 
-def addressMappingLastrow():
-    connection = databaseConnection()
-    cursor = connection.cursor()
-    executeCommand = "SELECT * FROM address_mapping"
-    cursor.execute(executeCommand)
-    result = cursor.fetchall()
-    if result == []:
-        number = 0
-    else:
-        executeCommand = "SELECT id FROM address_mapping ORDER BY id DESC LIMIT 1"
-        cursor.execute(executeCommand)
-        result = cursor.fetchall()
-        number = result[0][0]
-    try:
-        connection.close()
-    except:
-        pass
-    return number
-
-# Update uRCONNECT's config (ip, unitid, device name, status enable or disable) to database
-def updateConfig(ip, unitid, devicename, oldunitid, oldip, oldname, checkbox):
+# Update urconnect's config (ip, unitid, device name, nexpie device & status enable or disable) to database
+def updateConfig(ip, unitid, devicename, oldunitid, oldip, oldname, checkbox, nexpieauth):
     if checkbox != "enabled":
         checkbox = "disabled"
     connection = databaseConnection()
     cursor = connection.cursor()
-    executeCommand = "UPDATE address_mapping SET ip = %s, unitid = %s WHERE unitid = %s and ip = %s"
-    cursor.execute(executeCommand, (ip, unitid, oldunitid, oldip))
+    devicename = devicename.replace(" ", "_")
+    # 1st: Update urconnect name in "urconnect_address"
+    executeCommand = "UPDATE urconnect_address SET urconnect = %s, unitid = %s WHERE unitid = %s and urconnect = %s"
+    cursor.execute(executeCommand, (devicename, unitid, oldunitid, oldname,))
     connection.commit()
-    executeCommand = "UPDATE config SET ip = %s, unitid = %s, name = %s, status = %s WHERE unitid = %s and ip = %s and name = %s"
-    cursor.execute(executeCommand, (ip, unitid, devicename, checkbox, oldunitid, oldip, oldname))
+    # 2nd: Update ip, unitid, device name, nexpie device & status enable or disable.
+    executeCommand = "UPDATE config SET ip = %s, unitid = %s, urconnect = %s, status = %s, nexpieauth = %s WHERE unitid = %s and ip = %s and urconnect = %s"
+    cursor.execute(executeCommand, (ip, unitid, devicename, checkbox, nexpieauth, oldunitid, oldip, oldname,))
     connection.commit()
-    executeCommand = "SELECT htmlname FROM address_mapping WHERE ip = %s" # We only need length of unitid = %s
-    cursor.execute(executeCommand, (ip,))
+    # 3rd: Update name of urconnect in powereter database.
+    executeCommand = "UPDATE powermeter SET urconnect = %s WHERE urconnect = %s"
+    cursor.execute(executeCommand, (devicename, oldname,))
+    connection.commit()
+    # 4th: Get id of urconnect_address that you need to change value/data.
+    executeCommand = "SELECT id FROM urconnect_address WHERE urconnect = %s" # We only need length of unitid = %s
+    cursor.execute(executeCommand, (devicename,))
     result = cursor.fetchall()
-    return result
+    return(result)
 
 # Update NEXPIE credentials to database.
-def updateNexpieCredentials(command,clientid,token,secret):
+def updateNexpieCredentials(id, name, clientid, token, secret):
     connection = databaseConnection()
     cursor = connection.cursor()
-    executeCommand = "UPDATE nexpie_auth SET clientid = %s, token = %s, secret = %s WHERE name = %s"
-    cursor.execute(executeCommand, (clientid, token, secret, command))
+    executeCommand = "UPDATE nexpie_auth SET name = %s, clientid = %s, token = %s, secret = %s WHERE id = %s"
+    cursor.execute(executeCommand, (name, clientid, token, secret, id))
     connection.commit()
-    connection.close()
+    closeConnection(connection)
 
-# Check type and correction of input before update to database.
+# Add new NEXPIE device to database.
+def addNexpieCredentials(name, clientid, token, secret):
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = ("INSERT INTO nexpie_auth (name, clientid, token, secret) VALUES (%s, %s, %s, %s)")
+    cursor.execute(executeCommand, (name, clientid, token, secret))
+    connection.commit()
+    closeConnection(connection)
+
+"""
+    * Check type and correction of input before update to database.
+    * If its duplicate or error, then return error and skip update.
+"""
 def inputChecker(ip, unitid, devicename, oldip, oldunitid, oldname):
     if ip == "":
         return("Failed: IP address cannot be blank.")
@@ -469,7 +589,7 @@ def inputChecker(ip, unitid, devicename, oldip, oldunitid, oldname):
         return("Failed: Device name cannot be blank.")
     connection = databaseConnection()
     cursor = connection.cursor()
-    executeCommand = "SELECT id FROM config WHERE ip = %s and unitid = %s and name = %s"
+    executeCommand = "SELECT id FROM config WHERE ip = %s and unitid = %s and urconnect = %s"
     cursor.execute(executeCommand, (oldip, oldunitid, oldname))
     result = cursor.fetchall()
     id = result[0][0]
@@ -483,14 +603,18 @@ def inputChecker(ip, unitid, devicename, oldip, oldunitid, oldname):
     result = cursor.fetchall()
     if result != []:
         return("Failed: The unit id '" + unitid + "' is already used in database.")
-    executeCommand = "SELECT name FROM config WHERE name = %s and id <> %s"
+    executeCommand = "SELECT urconnect FROM config WHERE urconnect = %s and id <> %s"
     cursor.execute(executeCommand, (devicename, id))
     result = cursor.fetchall()
     if result != []:
         return("Failed: The name '" + devicename + "' is already used in database.")
+    closeConnection(connection)
     return("Passed")
 
-# Check type and correction of input before add new device to database.
+"""
+    * Check type and correction of input before update to database.
+    * If its duplicate or error, then return error and skip update.
+"""
 def inputCheckerNewDevice(ip, unitid, devicename):
     if ip == "":
         return("Failed: IP address cannot be blank.")
@@ -510,11 +634,12 @@ def inputCheckerNewDevice(ip, unitid, devicename):
     result = cursor.fetchall()
     if result != []:
         return("Failed: The unit id '" + unitid + "' is already used in database.")
-    executeCommand = "SELECT name FROM config WHERE name = %s"
+    executeCommand = "SELECT urconnect FROM config WHERE urconnect = %s"
     cursor.execute(executeCommand, (devicename,))
     result = cursor.fetchall()
     if result != []:
         return("Failed: The name '" + devicename + "' is already used in database.")
+    closeConnection(connection)
     return("Passed")
 
 # Check correction of client id before update to database.
@@ -522,13 +647,14 @@ def clientidChecker(clientid):
     for i in range(0, len(clientid)):
         if i == 8 or i == 13 or i == 18 or i == 23:
             if clientid[i] != "-":
-                return False
+                return(False)
         else:
             if clientid[i] == "-":
-                return False
-    return True
+                return(False)
+    return(True)
 
-# Check connection between application and uRCONNCET before update to database.
+# Check connection between application and urconnect before update to database.
+# This mean u cannot change urconnect data w/o connect to urconnect.
 def checkUrconnect(ip, unitid):
     PORT_NUMBER = 502
     try:
@@ -556,7 +682,7 @@ def readCard(ip, unitid):
     if not client.is_open():
         if not client.open():
             return("Failed: Can't connect to " + ip + ", unit id " + unitid)
-    # if open() is ok, read register (modbus function 0x03)
+    # if open() is ok, read register (modbus function FC03)
     if client.is_open():
         data = client.read_holding_registers(501, 5)
         for i in range(0,len(data)):
@@ -565,7 +691,7 @@ def readCard(ip, unitid):
         return data
 
 # Get modbus function from database using card type.
-def getModbusType(name,cardList):
+def getModbusType(name, cardList):
     connection = MySQL.connect(host= DB_IP,
                            user = DB_USERNAME,
                            passwd = DB_PASSWORD,
@@ -586,11 +712,8 @@ def getModbusType(name,cardList):
         for i in range (0, len(result)):
             result[i] = result[i] + (cardtypeList[0][1],)
             resultList.append(result[i])
-    try:
-        connection.close()
-    except:
-        pass
-    return resultList
+    closeConnection(connection)
+    return(resultList)
 
 # Write time interval to app_config.ini
 def writeInterval(interval):
@@ -606,26 +729,168 @@ def writeInterval(interval):
     return("Passed")
 
 """
+    Quick note:
+    * realAddress = address that use in pyModbusTCP. (ALWAYS MINUS ONE FROM URCONNECT DATASHEET)
+    * intAddress = address that use in uRCONNECT document, uRCONNECT configuration software and IDA web application.
+
+def addressChecker(name, startingAddress, filename):
+    try:
+        intAddress = int(startingAddress)
+        realAddress = intAddress - 1
+
+            intAddress > 0 same as realAddress >= 0
+            intAddress = 1 same as register 40000 (holding register 0)
+
+        if intAddress > 0:
+            if name != "" and name != " ":
+                model = getModelFromFilename(filename)
+                return("Passed", str(realAddress), model[0][0])
+            else:
+                pass
+        else:
+            pass
+        return("Not Passed", "0", "0")
+    except:
+        return("Not Passed", "0", "0")
+"""
+
+# Check nexpie device usage before delete from database.
+def chkCredentialUsage(nexpiename):
+    try:
+        connection = databaseConnection()
+        cursor = connection.cursor()
+        executeCommand = "SELECT urconnect FROM config WHERE nexpieauth = %s"
+        cursor.execute(executeCommand, (nexpiename,))
+        result = cursor.fetchall()
+        closeConnection(connection)
+        if result != []:
+            return("used")
+        else:
+            return("not used")
+    except:
+        return("failed")
+
+"""
+    Select quantity from datatype.
+    e.g. uint32 need 2x uint16 > quantity = 2
+"""
+def datatypeQuantity(datatype):
+    datatypeBits = datatype[-2:]
+    if datatypeBits == "32":
+        quantity = "2"
+    elif datatypeBits == "16":
+        quantity = "1"
+    elif datatypeBits == "64":
+        quantity = "4"
+    else:
+        quantity = "none"
+    return(quantity)
+
+# Check power meter address before add/change to database.
+def powermeterAddressChecker(name, modbustype, startaddr, multiplier, datatype):
+    # If multiplier or address isn't in number format => code in "except" will work.
+    try:
+        floatMultiplier = float(multiplier)
+        intaddress = int(startaddr)
+        if name == "" or name == " " or intaddress <= 0 or modbustype == "00":
+            return("Not Passed", "0", "-")
+        nameFirstchar = name[:1]
+        # need to check first character of name. because NEXPIE will reject JSON data if first character of name is number.
+        firstcharIsdigit = nameFirstchar.isdigit()
+        if firstcharIsdigit == True:
+            return("Not Passed", "0", "-")
+        # realAddress = address that use in pyModbusTCP.
+        realaddress = intaddress - 1
+        if datatype != "none":
+            quantity = datatypeQuantity(datatype)
+        return("Passed", realaddress, quantity)
+    except:
+        return("Not Passed", "0", "-")
+
+"""
+    Add blank input in "powermeter.html"
+    e.g. if u add 13 address to "powermeter_address". this function will generate blank input to 15 again.
+"""
+def updateBlankInput(metername):
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT id FROM powermeter_address WHERE metername = %s and modbustype = %s"
+    cursor.execute(executeCommand, (metername, "00",))
+    result = cursor.fetchall()
+    # Always keep 15 blank input per powermeter
+    blankinput = int(len(result))
+    if blankinput < 15:
+        blankinput = 15 - blankinput
+        for i in range(0, blankinput):
+            randomname = randomAddressname()
+            executeCommand = ("INSERT INTO powermeter_address (name, datatype, metername, modbustype, multiplier) VALUES (%s, %s, %s, %s, %s)")
+            cursor.execute(executeCommand, (randomname, "none", metername, "00", "-"),)
+    elif blankinput > 15:
+        blankinput = blankinput - 15
+        strBlankinput = str(blankinput)
+        executeCommand = "SELECT id FROM powermeter_address WHERE modbustype = %s and metername = %s ORDER BY id DESC LIMIT " + strBlankinput
+        cursor.execute(executeCommand, (id),)
+        result = cursor.fetchall()
+        for i in range(0, len(result)):
+            id = result[i][0]
+            executeCommand = ("DELETE FROM powermeter_address WHERE id = %s")
+            cursor.execute(executeCommand, (id),)
+    else:
+        pass
+    connection.commit()
+    closeConnection(connection)
+
+# Read function name. i mean it :D
+def updatePowermeter(metername, urconnect, oldmetername):
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "UPDATE powermeter_address SET metername = %s WHERE metername = %s"
+    cursor.execute(executeCommand, (metername, oldmetername,))
+    executeCommand = "UPDATE powermeter SET metername = %s, urconnect = %s WHERE metername = %s"
+    cursor.execute(executeCommand, (metername, urconnect, oldmetername,))
+    connection.commit()
+    closeConnection(connection)
+
+# Delete power meter from database.
+def deletePowermeter(metername):
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "DELETE FROM powermeter WHERE metername = %s"
+    cursor.execute(executeCommand, (metername,))
+    executeCommand = "DELETE FROM powermeter_address WHERE metername = %s"
+    cursor.execute(executeCommand, (metername,))
+    connection.commit()
+    closeConnection(connection)
+
+# Get datatypes from database.
+def getDatatype():
+    connection = urconnectSettings()
+    cursor = connection.cursor()
+    executeCommand = "SELECT name, symbol FROM datatypes"
+    cursor.execute(executeCommand,)
+    datatypeSelector = cursor.fetchall()
+    closeConnection(connection)
+    return(datatypeSelector)
+
+"""
     GET index.html
     * Display current uRCONNECT's config.
 """
 @app.route("/index")
 @login_required
 def index():
-    # Check table "address_mapping"
-    result = checkAddressMapping()
-    if result == "Not Passed":
-        createAddressMapping()
+    # Check table "urconnect_address"
     connection = databaseConnection()
-    data = getConfigData()
+    data = getConfig()
     tab = getTab()
+    credentials = getCredentialsName()
     cursor = connection.cursor()
-    executeCommand = "SELECT * FROM address_mapping"
+    executeCommand = "SELECT * FROM urconnect_address"
     cursor.execute(executeCommand)
     result = cursor.fetchall()
     interval = int(appconfig.get('TIME_INTERVAL', 'timeInterval'))
-    connection.close()
-    return render_template('index.html', name=current_user.name, result=result, tab=tab, data=data, interval=interval)
+    closeConnection(connection)
+    return render_template('index.html', name=current_user.name, result=result, tab=tab, data=data, interval=interval, credentials=credentials)
 
 """
     POST index.html
@@ -635,14 +900,16 @@ def index():
 @login_required
 def index_post():
     name = current_user.name
-    htmlUnitid = getHtmlUnitid()
-    for i in range (0,len(htmlUnitid)):
-        temp = request.form.get(htmlUnitid[i][0])
-        if temp != None:
-            strUnitid = str(htmlUnitid[i][0])
-            number = strUnitid.replace("id_unitid","")
-            unitid = temp
-            number = str(htmlUnitid[i][0]).replace("id_unitid", "")
+    idTuple = getConfigID()
+    for i in range (0,len(idTuple)):
+        """
+        Get unit id from input, then compare it.
+        Selected device => got unit id from input, if not => got None from input.
+        """
+        htmlUnitid = "id_unitid" + str(idTuple[i][0])
+        unitid = request.form.get(htmlUnitid)
+        if unitid != None:
+            number = str(idTuple[i][0])
             ipForm = "ip" + str(number)
             ip = request.form.get(ipForm)
             oldunitidForm = "oldunitid" + str(number)
@@ -655,37 +922,49 @@ def index_post():
             checkbox = request.form.get(checkboxForm)
             devicenameForm = "devicename" + str(number)
             devicename = request.form.get(devicenameForm)
-    checked = checkUrconnect(ip, unitid)
-    if checked != "Passed":
-        flash(checked)
-        return redirect('index')
-    checked = inputChecker(ip, unitid, devicename, oldip, oldunitid, oldname)
-    if checked != "Passed":
-        flash(checked)
-        return redirect('index')
-    interval = str(request.form.get("interval"))
-    checked = writeInterval(interval)
-    if checked != "Passed":
-        flash(checked)
-        return redirect('index')
-    result = updateConfig(ip, unitid, devicename, oldunitid, oldip, oldname, checkbox)
-    connection = databaseConnection()
-    cursor = connection.cursor()
-    for i in range(0, len(result)):
-        name = request.form.get(result[i][0])
-        if name == "":
-            pass
-        else:
-            executeCommand = "UPDATE address_mapping SET name = %s WHERE htmlname = %s"
-            cursor.execute(executeCommand, (name, result[i][0],))
-            connection.commit()
-    try:
-        connection.close()
-    except:
-        pass
-    flash("Updated Successfully")
-    logger.info('User: ' + current_user.name + ' - "' + devicename + '" updated.')
-    return redirect('index')
+            nexpieauthForm = "nexpieauth" + str(number)
+            nexpieauth = request.form.get(nexpieauthForm)
+            checked = checkUrconnect(ip, unitid)
+            if checked != "Passed":
+                flash(checked)
+                return redirect('index')
+            checked = inputChecker(ip, unitid, devicename, oldip, oldunitid, oldname)
+            if checked != "Passed":
+                flash(checked)
+                return redirect('index')
+            interval = str(request.form.get("interval"))
+            checked = writeInterval(interval)
+            if checked != "Passed":
+                flash(checked)
+                return redirect('index')
+            # Get length of channel of urconnect from ip address.
+            result = updateConfig(ip, unitid, devicename, oldunitid, oldip, oldname, checkbox, nexpieauth)
+            connection = databaseConnection()
+            cursor = connection.cursor()
+            for i in range(0, len(result)):
+                id = result[i][0]
+                nameForm = "name" + str(id)
+                name = request.form.get(nameForm)
+                unitForm = "unit" + str(id)
+                unit = request.form.get(unitForm)
+                checkboxForm = "checkbox" + str(id)
+                checkbox = request.form.get(checkboxForm)
+                if name == "":
+                    pass
+                else:
+                    try:
+                        if checkbox != "enabled":
+                            checkbox = "disabled"
+                        unit = str(unit)
+                        executeCommand = "UPDATE urconnect_address SET name = %s, unit = %s, status = %s WHERE id = %s"
+                        cursor.execute(executeCommand, (name, unit, checkbox, id,))
+                        connection.commit()
+                    except:
+                        pass
+            closeConnection(connection)
+            flash("Updated Successfully")
+            logger.info('User: ' + current_user.name + ' - "' + devicename + '" updated.')
+            return redirect('index')
 
 """
     GET powermeter.html
@@ -694,61 +973,140 @@ def index_post():
 @app.route("/powermeter")
 @login_required
 def powermeter():
-    data = getPowermeter()
-    return render_template("powermeter.html", name=current_user.name, data=data)
+    try:
+        # uRCONNECT tab
+        powermeter = getPowermeter()
+        data = getConfig()
+        # powermeter tab
+        urconnect = getUrconnect()
+        powermeterAddress = getPowermeterAddress()
+        powermeterTab = getPowermeterTab()
+        datatypeSelector = getDatatype()
+    except:
+        return render_template("powermeter.html", name=current_user.name)
+    return render_template("powermeter.html", name=current_user.name, urconnect=urconnect, powermeter=powermeter,
+    powermeterTab=powermeterTab, powermeterAddress=powermeterAddress, datatypes=datatypeSelector)
+
+
+@app.route("/powermeter", methods=['POST'])
+@login_required
+def powermeter_post():
+    try:
+        # First: update powermeter name & urconnect.
+        name = current_user.name
+        oldmetername = request.form.get("oldmetername")
+        metername = request.form.get("metername")
+        metername = metername.replace(" ", "_")
+        urconnect = request.form.get("urconnect")
+        # Second: update powermeter address.
+        connection = databaseConnection()
+        cursor = connection.cursor()
+        executeCommand = "SELECT id FROM powermeter_address WHERE metername = %s"
+        cursor.execute(executeCommand, (oldmetername,))
+        result = cursor.fetchall()
+        for i in range(0, len(result)):
+            id = result[i][0]
+            modbustypeForm = "type" + str(id)
+            modbustype = request.form.get(modbustypeForm)
+            # Delete command = "99" | None = "00"
+            if modbustype == "99":
+                executeCommand = "DELETE FROM powermeter_address WHERE id = %s"
+                cursor.execute(executeCommand, (id,))
+            elif modbustype != "00":
+                nameForm = "name" + str(id)
+                startaddrForm = "startaddr" + str(id)
+                datatypeForm = "datatype" + str(id)
+                multiplierForm = "multiplier" + str(id)
+                unitForm = "unit" + str(id)
+
+                name = request.form.get(nameForm)
+                modbustype = request.form.get(modbustypeForm)
+                startaddr = request.form.get(startaddrForm)
+                datatype = request.form.get(datatypeForm)
+                multiplier = request.form.get(multiplierForm)
+                unit = request.form.get(unitForm)
+                unit = str(unit)
+                # Check if address & quantity are integer, then update database.
+                checkerResult, realaddress, quantity = powermeterAddressChecker(name, modbustype, startaddr, multiplier, datatype)
+                if checkerResult == "Passed":
+                    executeCommand = "UPDATE powermeter_address SET name = %s, modbustype = %s, address = %s , multiplier = %s, datatype = %s, realaddress = %s, quantity = %s, unit = %s WHERE id = %s"
+                    cursor.execute(executeCommand, (name, modbustype, startaddr, multiplier, datatype, realaddress, quantity, unit, id,))
+                else:
+                    pass
+        connection.commit()
+        updatePowermeter(metername, urconnect, oldmetername)
+        updateBlankInput(metername)
+        closeConnection(connection)
+
+        flash("Updated Successfully")
+        logger.info('User: ' + current_user.name + ' - "' + metername + '" powermeter config updated.')
+        return redirect(url_for('powermeter'))
+
+    except:
+        flash("Updated failed")
+        return redirect(url_for('powermeter'))
+
+@app.route("/powermeter/add", methods=['POST'])
+@login_required
+def powermeter_add_post():
+    try:
+        metername = request.form.get("powermetername")
+        urconnect = request.form.get("newurconnect")
+        newPowermeter(metername, urconnect)
+        flash('"' + metername + '" added successfully.')
+    except:
+        flash('Failed: Cannot add "' + metername + '" to database.')
+    return redirect(url_for('powermeter'))
+
+@app.route("/powermeter/delete", methods=['POST'])
+@login_required
+def powermeter_delete_post():
+    try:
+        metername = request.form.get("metername")
+        deletePowermeter(metername)
+        flash('"' + metername + '" deleted successfully.')
+        return redirect(url_for('powermeter'))
+    except:
+        flash('Failed: Cannot delete "' + metername + '" from database.')
+    return redirect(url_for('powermeter'))
 
 """
     POST newdevice, GET index.html
     * Add new uRCONNECT to database.
 """
-@app.route("/newdevice", methods=['POST'])
+@app.route("/index/add", methods=['POST'])
 @login_required
 def newdevice_post():
     ip = request.form.get("newip")
     unitid = request.form.get("newunitid")
     checkbox = request.form.get("newcheckbox")
     devicename = request.form.get("newdevicename")
+    nexpieauth = request.form.get("newnexpieauth")
     checked = inputCheckerNewDevice(ip, unitid, devicename)
     if checked != "Passed":
         flash(checked)
-        return redirect('index')
+        return redirect(url_for('index'))
     try:
         cardList = readCard(ip, unitid)
     except:
         cardList = "Failed: Can't connect to " + ip + ", unit id " + unitid
     if cardList == "Failed: Can't connect to " + ip + ", unit id " + unitid:
         flash(cardList)
-        return redirect('index')
-    newDevice(ip, unitid, checkbox, devicename)
-    lastrow = addressMappingLastrow()
+        return redirect(url_for('index'))
+    newDevice(ip, unitid, checkbox, devicename, nexpieauth)
     resultList = getModbusType("urconnect_settings", cardList)
-    channelMarker = ""
     connection = databaseConnection()
     cursor = connection.cursor()
-    for i in range(0, len(resultList)): #
-        strCounter = str(i + lastrow)
+    for i in range(0, len(resultList)):
         name = "ch" + str(resultList[i][2]) + "_" + str(resultList[i][1])
-        htmlchannel = "channel" + str(i)
-        if resultList[i][2] == "1":
-            channelMarker = str(strCounter)
-        htmlmodule = "module" + strCounter
-        htmlchannel = "channel" + strCounter
-        htmltype = "type" + strCounter
-        htmlname = "name" + strCounter
-        htmlstart = "start" + strCounter
-        htmlquantity = "quantity"  + strCounter
-        htmltypeselector = "typeselector" + channelMarker
-        executeCommand = ("INSERT INTO address_mapping (unitid, module, channel, type, name, startingAddress, quantity, ip, htmlmodule, "
-        "htmlchannel, htmltype, htmlname, htmlstart, htmlquantity, htmltypeselector, displayAddress, cardtype) VALUES ( %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
-        cursor.execute(executeCommand, (unitid, resultList[i][1], resultList[i][2], resultList[i][0], name, resultList[i][3], resultList[i][4], ip, htmlmodule, htmlchannel, htmltype, htmlname, htmlstart, htmlquantity, htmltypeselector, resultList[i][5], resultList[i][6]))
+        executeCommand = ("INSERT INTO urconnect_address (unitid, module, channel, type, name, startingAddress, quantity, urconnect, "
+        "displayAddress, cardtype, status) VALUES ( %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
+        cursor.execute(executeCommand, (unitid, resultList[i][1], resultList[i][2], resultList[i][0], name, resultList[i][3], resultList[i][4], devicename, resultList[i][5], resultList[i][6], "disabled"))
     connection.commit()
-    try:
-        connection.close()
-    except:
-        pass
+    closeConnection(connection)
     flash('"' + devicename + '" added successfully.')
     logger.info('User: ' + current_user.name + ' - ' + devicename + "(" + ip + ", " + unitid + ') added to database.')
-    return redirect('index')
+    return redirect(url_for('index'))
 
 """
     GET credentials.html
@@ -757,8 +1115,13 @@ def newdevice_post():
 @app.route("/credentials")
 @login_required
 def credentials():
-    result = createNexpieAuth()
-    return render_template('credentials.html', name=current_user.name, result=result)
+    result = getNexpieAuth()
+    if result == []:
+        haveData = False
+        return render_template('credentials_false.html', name=current_user.name)
+    else:
+        haveData = True
+        return render_template('credentials.html', name=current_user.name, result=result)
 
 """
     POST credentials.html
@@ -768,28 +1131,93 @@ def credentials():
 @login_required
 def credentials_post():
     name = current_user.name
-    resultClientID = request.form.get("resultClientID")
-    resultToken = request.form.get("resultToken")
-    resultSecret = request.form.get("resultSecret")
-    resultCheckbox = request.form.get("resultCheckbox")
-    if resultCheckbox == "result" and len(resultClientID) == 36 and len(resultToken) == 32 and len(resultSecret) == 32:
-        resultChecker = clientidChecker(resultClientID)
+    nexpieid = getNexpieID()
+    for i in range(0,len(nexpieid)):
+        currentNexpieid = str(nexpieid[i][0])
+        checkbox = "checkbox" + currentNexpieid
+        currentCheckbox = request.form.get(checkbox)
+        if currentCheckbox == "checked":
+            currentName = request.form.get("name" + currentNexpieid)
+            currentClientID = request.form.get("clientid" + currentNexpieid)
+            currentToken = request.form.get("token" + currentNexpieid)
+            currentSecret = request.form.get("secret" + currentNexpieid)
+            if currentName != None and len(currentClientID) == 36 and len(currentToken) == 32 and len(currentSecret) == 32:
+                currentChecker = clientidChecker(currentClientID)
+                if currentChecker == True:
+                    updateNexpieCredentials(currentNexpieid, currentName, currentClientID, currentToken, currentSecret)
+                    flash("Nexpie credentials updated successfully.")
+                    logger.info('User: ' + current_user.name + ' - Update NEXPIE credentials.')
+                    logger.info('User: ' + current_user.name + ' - Name (' + currentName + ') updated.')
+                    logger.info('User: ' + current_user.name + ' - Clientid (' + currentClientID + ') updated.')
+                    logger.info('User: ' + current_user.name + ' - Token (' + currentToken + ') updated.')
+                    logger.info('User: ' + current_user.name + ' - Secret (' + currentSecret + ') updated.')
+                else:
+                    flash("Failed: Please recheck client id format.")
+            elif len(currentClientID) != 36:
+                flash("Failed: Client ID must be 36 characters.")
+            elif len(currentToken) != 32:
+                flash("Failed: Token must be 32 characters.")
+            elif len(currentSecret) != 32:
+                flash("Failed: Secret must be 32 characters.")
+    return redirect(url_for('credentials'))
+
+@app.route("/credentials/delete", methods=['POST'])
+@login_required
+def credentials_delete_post():
+    try:
+        nexpiename = request.form['deletebutton']
+        usageResult = chkCredentialUsage(nexpiename)
+        # Check library usage before delete.
+        # Script cannot delete library if it used in any powermeter.
+        if usageResult == "used":
+            flash('Failed:  "' + nexpiename +'" is currently in use. Please deactivate uRCONNECT that using "'+ nexpiename + '".')
+            return redirect(url_for('credentials'))
+        elif usageResult == "not used":
+            pass
+        else:
+            flash('Failed: Cannot delete "' + nexpiename + '" from database.')
+            return redirect(url_for('credentials'))
+
+        # If it not used, then delete nexpie credentials.
+        result = deleteCredentials(nexpiename)
+        if result == "success":
+            flash('"' + nexpiename + '" deleted successfully.')
+            return redirect(url_for('credentials'))
+        else:
+            flash("Failed: Can't delete " + nexpiename + '" from database.')
+            return redirect(url_for('credentials'))
+    except:
+        flash("Failed: Can't delete selected devicename from database.")
+        return redirect('credentials')
+
+# Add new nexpie device.
+@app.route("/credentials/add", methods=['POST'])
+@login_required
+def credentials_add_post():
+    name = current_user.name
+    newDevicename = request.form.get("newDevicename")
+    newClientID = request.form.get("newClientID")
+    newToken = request.form.get("newToken")
+    newSecret = request.form.get("newSecret")
+    #newCheckbox = request.form.get("newCheckbox")
+    if newDevicename != None and len(newClientID) == 36 and len(newToken) == 32 and len(newSecret) == 32:
+        resultChecker = clientidChecker(newClientID)
         if resultChecker == True:
-            updateNexpieCredentials(resultCheckbox,resultClientID,resultToken,resultSecret)
-            flash("Nexpie credentials updated successfully.")
-            logger.info('User: ' + current_user.name + ' - Update NEXPIE credentials.')
-            logger.info('User: ' + current_user.name + ' - Clientid (' + resultClientID + ') updated.')
-            logger.info('User: ' + current_user.name + ' - Token (' + resultToken + ') updated.')
-            logger.info('User: ' + current_user.name + ' - Secret (' + resultSecret + ') updated.')
+            addNexpieCredentials(newDevicename, newClientID, newToken, newSecret)
+            flash("Nexpie credentials: " + newDevicename + " added successfully.")
+            logger.info('User: ' + current_user.name + ' - Add new NEXPIE credentials.')
+            logger.info('User: ' + current_user.name + ' - Name (' + newDevicename + ') Added.')
         else:
             flash("Failed: Please recheck client id format.")
-    elif len(resultClientID) != 36:
+    elif newDevicename == None:
+        flash("Failed: Devicename cannot be blank.")
+    elif len(newClientID) != 36:
         flash("Failed: Client ID must be 36 characters.")
-    elif len(resultToken) != 32:
+    elif len(newToken) != 32:
         flash("Failed: Token must be 32 characters.")
-    elif len(resultSecret) != 32:
+    elif len(newSecret) != 32:
         flash("Failed: Secret must be 32 characters.")
-    return redirect('credentials')
+    return redirect(url_for('credentials'))
 
 @app.route('/')
 def page():
@@ -831,14 +1259,18 @@ def login_post():
     POST deleteconfig, GET index.html
     * Delete uRCONNECT from database.
 """
-@app.route('/deleteconfig', methods=['POST'])
+@app.route('/index/delete', methods=['POST'])
 @login_required
 def deleteconfig_post():
-    ip = request.form.get('ipaddr')
-    devicename = request.form.get('current_devicename')
-    deleteConfig(ip)
-    flash('"' + devicename + '" deleted successfully.')
-    logger.info('User: ' + current_user.name + ' - "' + str(devicename) + '" deleted successfully.')
+    urconnect = request.form.get('urconnect')
+    result = deleteConfig(urconnect)
+    if result == "deleted":
+        flash('"' + urconnect + '" deleted successfully.')
+    elif result == "not delete":
+        flash('Failed:  "' + urconnect +'" is currently in use. Please deactivate powermeter that using '+ urconnect + '.')
+    else:
+        flash('Cannot delete "' + urconnect + '".')
+    logger.info('User: ' + current_user.name + ' - "' + str(urconnect) + '" deleted successfully.')
     return redirect(url_for('index'))
 
 """
@@ -883,7 +1315,7 @@ def user_post():
             flash("Failed: Those password didn't match.")
     else:
         flash("Failed: Current password didn't match.")
-    return render_template('user.html', name=current_user.name)
+    return redirect(url_for('user'))
 
 """
     GET logout
@@ -898,145 +1330,18 @@ def logout():
     return redirect(url_for('login'))
 
 """
-    * Read current active uRCONNECT from database.
-    * Return value that pyModbusTCP need.
-"""
-def readAddress():
-    connection = databaseConnection()
-    cursor = connection.cursor()
-    executeCommand = "SELECT unitid, ip, name FROM config WHERE status = %s"
-    cursor.execute(executeCommand, ("enabled",))
-    urconnectList = cursor.fetchall()
-    addressList = []
-    for i in range(0,len(urconnectList)):
-        executeCommand = ('SELECT type, name, startingAddress, quantity, cardtype, module, channel FROM address_mapping WHERE unitid = %s and ip = %s')
-        UNIT_ID = int(urconnectList[i][0])
-        IP_ADDRESS = str(urconnectList[i][1])
-        UNITNAME = str(urconnectList[i][2])
-        cursor.execute(executeCommand, (UNIT_ID, IP_ADDRESS))
-        result = cursor.fetchall()
-        addressList.append(result)
-    try:
-        connection.close()
-    except:
-        pass
-    connection = urconnectSettings()
-    cursor = connection.cursor()
-    executeCommand = "SELECT name, startingAddress, quantity FROM powermeter"
-    cursor.execute(executeCommand)
-    powermeterList = cursor.fetchall()
-    return(urconnectList, addressList, powermeterList)
-
-"""
-    * Read value from uRCONNECT
-    * Read every channel from every module (up to 40 channel) then convert to json format.
-"""
-def modbusRead(urconnectList, addressList, powermeterList):
-    payloadDict = {"data":{}}
-    PORT_NUMBER = 502
-    for i in range(0,len(urconnectList)):
-        UNIT_ID = int(urconnectList[i][0]) #UnitID #xx
-        IP_ADDRESS = str(urconnectList[i][1]) #IPaddress #xx
-        UNITNAME = str(urconnectList[i][2])
-        payloadDict["data"][UNITNAME] = {}
-        payloadDict["data"][UNITNAME]["UnitID"] = UNIT_ID
-        payloadDict["data"][UNITNAME]["IPAddress"] = IP_ADDRESS
-        payloadDict["data"][UNITNAME]["Module"] = {}
-        payloadDict["data"][UNITNAME]["Module"]["module_1down"] = {}
-        payloadDict["data"][UNITNAME]["Module"]["module_2down"] = {}
-        payloadDict["data"][UNITNAME]["Module"]["module_2up"] = {}
-        payloadDict["data"][UNITNAME]["Module"]["module_3down"] = {}
-        payloadDict["data"][UNITNAME]["Module"]["module_3up"] = {}
-        payloadDict["data"][UNITNAME]["Module"]["powermeter"] = {}
-        # Create connection to uRCONNECt.
-        client = ModbusClient(auto_open=True, timeout=3, host=IP_ADDRESS, port=PORT_NUMBER, unit_id=UNIT_ID, debug=True)
-        if not client.is_open():
-            if not client.open():
-                logger.error("unable to connect to " + IP_ADDRESS + ":" + str(PORT_NUMBER))
-        # if open() is ok, read register
-        if client.is_open():
-            for num in range (0,len(addressList[i])):
-                if addressList[i][num][1] == "" and addressList[i][num][2] == "" and addressList[i][num][3] == "":
-                    startingAddress = 0
-                    quantity = 1
-                else:
-                    startingAddress = int(addressList[i][num][2])
-                    quantity = int(addressList[i][num][3])
-                type = str(addressList[i][num][0])
-                name = str(addressList[i][num][1]) # label
-
-                module = "module_" + str(addressList[i][num][5]) #1down,2up...
-                if type == "01":
-                    data = client.read_coils(startingAddress, quantity) # Return list that contains True or False.
-                elif type == "02":
-                    data = client.read_discrete_inputs(startingAddress, quantity) # Return list that contains True or False.
-                elif type == "04":
-                    data = client.read_input_registers(startingAddress, quantity) # Return list that contains integer.
-                if str(addressList[i][num][6]) == "1":
-                    cardtype = str(addressList[i][num][4])
-                    payloadDict["data"][UNITNAME]["Module"][module]["ModuleCardtype"] = cardtype
-                payloadDict["data"][UNITNAME]["Module"][module][name] = data
-                if str(addressList[i][num][6]) == "8" and str(addressList[i][num][4]) == "None":
-                    payloadDict["data"][UNITNAME]["Module"][module] = {}
-
-            payloadDict["data"][UNITNAME]["Module"]["powermeter"] = {}
-            for num in range (0,len(powermeterList)):
-                if powermeterList[num][0] == "" and powermeterList[num][1] == "" and powermeterList[num][2] == "":
-                    startingAddress = 0
-                    quantity = 1
-                else:
-                    startingAddress = int(powermeterList[num][1])
-                    quantity = int(powermeterList[num][2])
-                name = str(powermeterList[num][0]) # label
-                name = name.replace(" ","") # Remove space.
-                data = client.read_holding_registers(startingAddress, quantity) # Return list that contains integer.
-                try:
-                    payloadDict["data"][UNITNAME]["Module"]["powermeter"][name] = data
-                except:
-                    payloadDict["data"][UNITNAME]["Module"]["powermeter"][name] = []
-                    payloadDict["data"][UNITNAME]["Module"]["powermeter"][name] = data
-    now = datetime.now(tz=timezone('Asia/Bangkok'))
-    currentTime = now.strftime("%d/%m/%Y %H:%M:%S")
-    payloadDict["data"]["currentTime"] = currentTime
-    dataShadow = json.dumps(payloadDict)
-    return dataShadow
-
-"""
-    * Get NEXPIE credential from database.
-    * Return client id, username and password.
-"""
-def getNexpieCredentials():
-    connection = databaseConnection()
-    cursor = connection.cursor()
-    executeCommand = "SELECT clientid, token, secret from nexpie_auth" #WHERE name
-    cursor.execute(executeCommand)
-    result = cursor.fetchall()
-    connection.close()
-    return result
-
-"""
-    * Send JSON data to NEXPIE using HTTPS Restful API
-    * You can see result on nexpie.io
-"""
-def payloadPost(dataShadow, credentials):
-    basicAuthCredentials = (credentials[0][0], credentials[0][1]) # clientid & token
-    response = requests.post(NEXPIE_URL, data=dataShadow, auth=basicAuthCredentials, timeout=5)
-    try:
-        logger.info('NEXPIE RestAPI response: ' + str(response.text))
-    except:
-        pass
-
-"""
     * Start modbus thread
     * Note: read enabled device from DB. => get NEXPIE credentials from DB => read value from uRCONNECT
       => convert to JSON => send to NEXPIE.
     * IMPORTANT! : After update uRCONNECT settings and/or NEXPIE credential. You need to restart application to take effect.
+    ***************************************************************************************************************************
+    * Q: Why we need to query data from database only 1 time?
+    * A: Our database server hardware & internet connection isn't stable enough for multiple concurrent connections.
 """
 def threadedModbus():
     logger.info("Thread: modbusReader started.")
     try:
-        urconnectList, addressList, powermeterList = readAddress()
-        credentials = getNexpieCredentials()
+        preparedList, meternameList = prepareAddress()
         logger.info('uRCONNECT: ' + str(urconnectList))
     except:
         pass
@@ -1051,12 +1356,320 @@ def threadedModbus():
     while True:
         try:
             TIME_INTERVAL = int(appconfig.get('TIME_INTERVAL', 'timeInterval'))
-            dataShadow = modbusRead(urconnectList, addressList, powermeterList)
-            payloadPost(dataShadow, credentials)
+            modbus2Nexpie(preparedList, meternameList)
             time.sleep(TIME_INTERVAL)
         except:
-            logger.debug("Modbus reader error - Please check your configuration.")
-            time.sleep(10)
+            logger.debug("Modbus reader error - Please check your configuration or NEXPIE server status.")
+            time.sleep(15)
+
+def prepareAddress():
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT nexpieauth FROM config WHERE status = %s"
+    cursor.execute(executeCommand, ("enabled",))
+    urconnectList = cursor.fetchall()
+    tempNexpieList = []
+    for i in range(0,len(urconnectList)):
+        urconnectNexpiename = str(urconnectList[i][0])
+        nexpieauth = getNexpieCredentials(urconnectNexpiename)
+        nexpiename = nexpieauth[0][0]
+        clientid = nexpieauth[0][1]
+        token = nexpieauth[0][2]
+        secret = nexpieauth[0][3]
+        tempNexpieList.append([nexpiename, clientid, token, secret])
+    nexpieList = []
+    for i in range(0,len(tempNexpieList)):
+        if i not in nexpieList:
+            nexpieList.append(tempNexpieList[i])
+    meternameList = []
+    preparedList = []
+    for numNexpieList in range(0,len(nexpieList)):
+        nexpiename = nexpieList[numNexpieList][0]
+        clientid = nexpieList[numNexpieList][1]
+        token = nexpieList[numNexpieList][2]
+        secret = nexpieList[numNexpieList][3]
+        addressDict = {}
+        addressDict["credentials"] = {}
+        addressDict["credentials"]["nexpiename"] = nexpiename
+        addressDict["credentials"]["clientid"] = clientid
+        addressDict["credentials"]["token"] = token
+        addressDict["credentials"]["secret"] = secret
+        addressDict["urconnect"] = []
+        connection = databaseConnection()
+        cursor = connection.cursor()
+        executeCommand = "SELECT unitid, ip, urconnect, nexpieauth FROM config WHERE status = %s and nexpieauth = %s"
+        cursor.execute(executeCommand, ("enabled", nexpiename))
+        urconnectList = cursor.fetchall()
+        for i in range(0,len(urconnectList)):
+            unitid = urconnectList[i][0]
+            ip = urconnectList[i][1]
+            urconnectname = urconnectList[i][2]
+            tempdict = {"urconnectname": urconnectname, "unitid": unitid, "ip": ip}
+            moduleList = ["1down", "2up", "2down", "3up", "3down"]
+            for n in range(0,len(moduleList)):
+                executeCommand = ('SELECT type, name, startingAddress, quantity, cardtype, module, channel, unit FROM urconnect_address WHERE unitid = %s and urconnect = %s and status = %s and module = %s')
+                cursor.execute(executeCommand, (unitid, urconnectname, "enabled", moduleList[n]))
+                addressList = cursor.fetchall()
+                modulename = "module_" + moduleList[n]
+                tempdict[modulename] = []
+                for m in range(0,len(addressList)):
+                    modbustype = str(addressList[m][0])
+                    addressname = str(addressList[m][1])
+                    startaddr = int(addressList[m][2])
+                    quantity = int(addressList[m][3])
+                    #cardtype = str(addressList[m][4])
+                    module = str(addressList[m][5])
+                    #channel = str(addressList[m][6])
+                    unit = str(addressList[m][7])
+                    tempaddress = {"name": addressname, "startaddr": startaddr, "quantity": quantity, "modbustype": modbustype, "unit": unit}
+                    tempdict[modulename].append(tempaddress)
+
+            executeCommand = "SELECT metername, urconnect FROM powermeter WHERE urconnect = %s"
+            cursor.execute(executeCommand, (urconnectname,))
+            meterList = cursor.fetchall()
+            tempmeternameList = []
+            for n in range(0, len(meterList)):
+                metername = str(meterList[n][0])
+                tempmeternameList.append(metername)
+                tempdict[metername] = []
+                executeCommand = "SELECT name, quantity, datatype, realaddress, metername, modbustype, multiplier, unit FROM powermeter_address WHERE metername = %s and modbustype <> %s"
+                cursor.execute(executeCommand, (metername, "00",))
+                meteraddress = cursor.fetchall()
+                for m in range(0, len(meteraddress)):
+                    addressname = str(meteraddress[m][0])
+                    quantity = int(meteraddress[m][1])
+                    datatype = str(meteraddress[m][2])
+                    startaddr = int(meteraddress[m][3])
+                    METERNAME_POWERMETER_ADDR = str(meteraddress[m][4])
+                    modbustype = str(meteraddress[m][5])
+                    multiplier = float(meteraddress[m][6])
+                    unit = str(meteraddress[m][7])
+                    temppowermeter = {"name": addressname, "quantity": quantity, "datatype": datatype, "startaddr": startaddr, "modbustype": modbustype, "multiplier": multiplier, "unit": unit}
+                    tempdict[metername].append(temppowermeter)
+            meternameList.append(tempmeternameList)
+            addressDict["urconnect"].append(tempdict)
+        preparedList.append(addressDict)
+    closeConnection(connection)
+    return(preparedList, meternameList)
+
+"""
+    * Read current active uRCONNECT from database.
+    * Return value that pyModbusTCP need.
+"""
+def readAddress():
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT unitid, ip, urconnect, nexpieauth FROM config WHERE status = %s"
+    cursor.execute(executeCommand, ("enabled",))
+    urconnectList = cursor.fetchall()
+    addressList = []
+    ipList = []
+    powermeterList = []
+    powermeteraddressList = []
+    STATUS_ENABLED = "enabled"
+    for i in range(0,len(urconnectList)):
+        executeCommand = ('SELECT type, name, startingAddress, quantity, cardtype, module, channel, unit FROM urconnect_address WHERE unitid = %s and urconnect = %s and status = %s')
+        UNIT_ID = int(urconnectList[i][0])
+        IP_ADDRESS = str(urconnectList[i][1])
+        URCONNECT_NAME = str(urconnectList[i][2])
+        cursor.execute(executeCommand, (UNIT_ID, URCONNECT_NAME, STATUS_ENABLED,))
+        result = cursor.fetchall()
+        addressList.append(result)
+        ipList.append(IP_ADDRESS)
+        powermeterList, powermeteraddressList = readPowermeter(URCONNECT_NAME, powermeterList, powermeteraddressList)
+    closeConnection(connection)
+    return(urconnectList, addressList, powermeterList, powermeteraddressList)
+
+def readPowermeter(urconnect, powermeterList, powermeteraddressList):
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT metername, urconnect FROM powermeter WHERE urconnect = %s"
+    cursor.execute(executeCommand, (urconnect,))
+    result = cursor.fetchall()
+    for i in range(0,len(result)):
+        powermeterList.append(result[i]) # append tuple (metername, urconnect) instead of [(metername0, urconnect0), (metername1, urconnect1)]
+        metername = str(result[i][0])
+        executeCommand = "SELECT name, quantity, datatype, realaddress, metername, modbustype, multiplier, unit FROM powermeter_address WHERE metername = %s and modbustype <> %s"
+        cursor.execute(executeCommand, (metername, "00",))
+        meteraddress = cursor.fetchall()
+        powermeteraddressList.append(meteraddress) # [[(addr_0), (addr_1), ..., (addr_n)], [(addr_0), (addr_1), ..., (addr_n)]]
+    closeConnection(connection)
+    return(powermeterList, powermeteraddressList)
+
+"""
+    * Read value from uRCONNECT
+    * Read every channel from every module (up to 40 channel) then convert to json format.
+"""
+def modbus2Nexpie(addressList, meternameList):
+    PORT_NUMBER = 502
+    for nexpiename in range(0, len(addressList)):
+        payloaddata = {"data":{}}
+        # load urconnect data from addressList.
+        nexpiedeviceName = addressList[nexpiename]['credentials']['nexpiename']
+        for j in range(0, len(addressList[nexpiename]["urconnect"])):
+            urconnectname = addressList[nexpiename]["urconnect"][j]["urconnectname"]
+            IP_ADDRESS = addressList[nexpiename]["urconnect"][j]["ip"]
+            UNIT_ID = addressList[nexpiename]["urconnect"][j]["unitid"]
+            payloaddata["data"][urconnectname] = {}
+            payloaddata["data"][urconnectname]['detail'] = {}
+            payloaddata["data"][urconnectname]['detail']["ip"] = IP_ADDRESS
+            payloaddata["data"][urconnectname]['detail']["unitid"] = UNIT_ID
+            #
+            for n in range(0,5):
+                moduleDict = {
+                0 : "module_1down",
+                1 : "module_2up",
+                2 : "module_2down",
+                3 : "module_3up",
+                4 : "module_3down"
+                }
+                module = moduleDict[n]
+                payloaddata["data"][urconnectname][module] = {}
+                client = ModbusClient(auto_open=True, timeout=3, host=IP_ADDRESS, port=PORT_NUMBER, unit_id=UNIT_ID, debug=True)
+                for m in range(0, len(addressList[nexpiename]["urconnect"][j][module])):
+                    modbustype = addressList[nexpiename]["urconnect"][j][module][m]['modbustype']
+                    startaddr = addressList[nexpiename]["urconnect"][j][module][m]['startaddr']
+                    quantity = addressList[nexpiename]["urconnect"][j][module][m]['quantity']
+                    addressname = addressList[nexpiename]["urconnect"][j][module][m]['name']
+                    unit = addressList[nexpiename]["urconnect"][j][module][m]['unit']
+                    payloaddata["data"][urconnectname][module][addressname] = {}
+                    if not client.is_open():
+                        if not client.open():
+                            logger.error("unable to connect to " + IP_ADDRESS + ":" + str(PORT_NUMBER))
+                    if client.is_open():
+                        # type = FC (e.g. type 04 == FC04: Read Input Register)
+                        data = modbusReader(modbustype, startaddr, quantity, client)
+                        if modbustype == "04":
+                            data = getFloat32swapped(data, 1)
+                        payloaddata["data"][urconnectname][module][addressname]["value"] = data
+                        payloaddata["data"][urconnectname][module][addressname]["unit"] = unit
+            for n in range(0, len(meternameList[nexpiename])):
+                metername = meternameList[nexpiename][n]
+                payloaddata["data"][urconnectname][metername] = {}
+                for m in range(0, len(addressList[nexpiename]["urconnect"][j][metername])):
+                    addressname = addressList[nexpiename]["urconnect"][j][metername][m]['name']
+                    modbustype = addressList[nexpiename]["urconnect"][j][metername][m]['modbustype']
+                    datatype = addressList[nexpiename]["urconnect"][j][metername][m]['datatype']
+                    startaddr = addressList[nexpiename]["urconnect"][j][metername][m]['startaddr']
+                    multiplier = addressList[nexpiename]["urconnect"][j][metername][m]['multiplier']
+                    quantity = addressList[nexpiename]["urconnect"][j][metername][m]['quantity']
+                    unit = addressList[nexpiename]["urconnect"][j][metername][m]['unit']
+                    payloaddata["data"][urconnectname][metername][addressname] = {}
+                    if not client.is_open():
+                        if not client.open():
+                            logger.error("unable to connect to " + IP_ADDRESS + ":" + str(PORT_NUMBER))
+                    if client.is_open():
+                        # type = FC (e.g. type 04 == FC04: Read Input Register)
+                        data = powermeterConverter(IP_ADDRESS, UNIT_ID, startaddr, quantity, modbustype, datatype, multiplier, client)
+                        payloaddata["data"][urconnectname][metername][addressname]["value"] = data
+                        payloaddata["data"][urconnectname][metername][addressname]["unit"] = unit
+        now = datetime.now(tz=timezone('Asia/Bangkok'))
+        currentTime = now.strftime("%d/%m/%Y %H:%M:%S")
+        payloaddata["data"]["currentTime"] = currentTime
+        nexpieShadow = json.dumps(payloaddata)
+        clientid = addressList[nexpiename]["credentials"]["clientid"]
+        token = addressList[nexpiename]["credentials"]["token"]
+        secret = addressList[nexpiename]["credentials"]["secret"]
+        payloadPost(nexpieShadow, clientid, token, secret)
+
+def getFloat32(valueArray, multiplier):
+    packedUint16 = struct.pack('>HH', valueArray[0], valueArray[1])
+    convertedFloat32 = struct.unpack('>f', packedUint16)
+    multipliedValue = convertedFloat32[0] * float(multiplier)
+    data = float("%.3f" % multipliedValue)
+    return(data)
+
+def getFloat32swapped(valueArray, multiplier):
+    packedUint16 = struct.pack('>HH', valueArray[1], valueArray[0])
+    convertedFloat32 = struct.unpack('>f', packedUint16)
+    multipliedValue = convertedFloat32[0] * float(multiplier)
+    data = float("%.3f" % multipliedValue)
+    return(data)
+
+def getUint32(valueArray, multiplier):
+    packedUint16 = struct.pack('>HH', valueArray[0], valueArray[1])
+    convertedUint32 = struct.unpack('>I', packedUint16)
+    multipliedValue = float(convertedUint32[0]) * float(multiplier)
+    data = float("%.3f" % multipliedValue)
+    return(data)
+
+def getUint32swapped(valueArray, multiplier):
+    packedUint16 = struct.pack('>HH', valueArray[1], valueArray[0])
+    convertedUint32 = struct.unpack('>I', packedUint16)
+    multipliedValue = float(convertedUint32[0]) * float(multiplier)
+    data = float("%.3f" % multipliedValue)
+    return(data)
+
+def getUint16(valueArray, multiplier):
+    value = valueArray[0]
+    data = float(valueArray[0]) * float(multiplier)
+    return(data)
+
+def modbusReader(type, startaddr, quantity, client):
+    if type == "01":
+        data = client.read_coils(startaddr, quantity) # Return list that contains True or False.
+        data = data[0]
+    elif type == "02":
+        data = client.read_discrete_inputs(startaddr, quantity) # Return list that contains True or False.
+        data = data[0]
+    elif type == "03":
+        data = client.read_holding_registers(startaddr, quantity) # Return uint16 list.
+    elif type == "04":
+        data = client.read_input_registers(startaddr, quantity) # Return uint16 list.
+    else:
+        data = None
+    return(data)
+
+def powermeterConverter(IP_ADDRESS, UNIT_ID, startaddr, quantity, modbustype, datatype, multiplier, client):
+    valueArray = modbusReader(modbustype, startaddr, quantity, client)
+    if valueArray == None:
+        return(None)
+    if datatype == "uint32":
+        data = getUint32(valueArray, multiplier)
+    if datatype == "uint32sw":
+        data = getUint32swapped(valueArray, multiplier)
+    elif datatype == "float32":
+        data = getFloat32(valueArray, multiplier)
+    elif datatype == "float32sw":
+            data = getFloat32swapped(valueArray, multiplier)
+    elif datatype  == "uint16":
+        data = getUint16(valueArray, multiplier)
+    """
+    elif converter == "uint64":
+        getUint64(startingAddress, IP_ADDRESS, UNIT_ID, multiplier)
+
+    elif converter == "float64":
+        getFloat64(startingAddress, IP_ADDRESS, UNIT_ID, multiplier)
+    """
+    return(data)
+
+"""
+    * Get NEXPIE credential from database.
+    * Return client id, username and password.
+"""
+def getNexpieCredentials(nexpiename):
+    connection = databaseConnection()
+    cursor = connection.cursor()
+    executeCommand = "SELECT name, clientid, token, secret FROM nexpie_auth WHERE name = %s"
+    cursor.execute(executeCommand, (nexpiename,))
+    result = cursor.fetchall()
+    try:
+        connection.close()
+    except:
+        pass
+    return(result)
+
+"""
+    * Send JSON data to NEXPIE using HTTPS Restful API
+    * You can see result on nexpie.io
+"""
+def payloadPost(dataShadow, nexpieDeviceid, nexpieToken, nexpieSecret):
+    basicAuthCredentials = (nexpieDeviceid, nexpieToken) # clientid & token
+    response = requests.post(NEXPIE_URL, data=dataShadow, auth=basicAuthCredentials, timeout=5)
+    try:
+        logger.info('NEXPIE RestAPI response: ' + str(response.text))
+    except:
+        pass
 
 """
     * Application init.
@@ -1064,19 +1677,18 @@ def threadedModbus():
       => start web application => :)
 """
 if __name__ == '__main__':
-    createUser() # Create user if table "user" have nothing.
     logger.info("Logger: Started.")
     #app.debug = True
-    mqttLoopChecker = True
-    while mqttLoopChecker == True:
+    nexpieLoopChecker = True
+    while nexpieLoopChecker == True:
         try:
-            r = pyping.ping('mqtt.nexpie.io')
+            r = pyping.ping('api.nexpie.io')
             if r.ret_code == 0:
-                logger.info("Ping mqtt.nexpie.io: Success!")
+                logger.info("Ping api.nexpie.io: Success!")
 
-                mqttLoopChecker = False
+                nexpieLoopChecker = False
             else:
-                logger.info("Ping mqtt.nexpie.io: Failed!")
+                logger.info("Ping api.nexpie.io: Failed!")
         except:
             time.sleep(5)
     webappLoopChecker = True

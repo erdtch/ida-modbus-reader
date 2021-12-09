@@ -12,16 +12,13 @@
   <link rel="stylesheet" href="{{ url_for('static',filename='css/header.css') }}">
   <link rel="stylesheet" href="{{ url_for('static',filename='css/components.css') }}">
   <link rel="stylesheet" href="{{ url_for('static',filename='css/tab_table.css') }}">
-  {% if request.path == url_for('index') %}
   <link rel="stylesheet" href="{{ url_for('static',filename='css/config.css') }}">
-
   <link rel="stylesheet" href="{{ url_for('static',filename='css/urconnect_popup.css') }}">
-  {% elif request.path == url_for('user') %}
+  {% if request.path == url_for('user') %}
   <link rel="stylesheet" href="{{ url_for('static',filename='css/user.css') }}">
   {% elif request.path == url_for('credentials') %}
   <link rel="stylesheet" href="{{ url_for('static',filename='css/credentials.css') }}">
-  {% elif request.path == url_for('powermeter') %}
-  <link rel="stylesheet" href="{{ url_for('static',filename='css/powermeter.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static',filename='css/tab_table.css') }}">
   {% endif %}
   <title>{% block title %}{% endblock %}</title>
 </head>
@@ -64,16 +61,18 @@
     <p>Network & Security Team, IDA Platform - National Electronics and Computer Technology Center (NECTEC)</p>
   </div>
   <script type=text/javascript src="{{ url_for('static', filename='js/jquery-1.9.1.min.js') }}"></script>
-  {% if request.path == url_for('index') or request.path == url_for('index_post') %}
-  <script type=text/javascript src="{{ url_for('static', filename='js/config_validator.js') }}"></script>
   <script type=text/javascript src="{{ url_for('static', filename='js/tab_table.js') }}"></script>
+  {% if request.path == url_for('index') or request.path == url_for('index_post') or request.path == url_for('powermeter') %}
+  <script type=text/javascript src="{{ url_for('static', filename='js/config_validator.js') }}"></script>
   <script type=text/javascript src="{{ url_for('static', filename='js/hidden_pic.js') }}"></script>
   <script type=text/javascript src="{{ url_for('static', filename='js/delete_confirm.js') }}"></script>
   {% elif request.path == url_for('user') or request.path == url_for('user_post') %}
   <script type=text/javascript src="{{ url_for('static', filename='js/tab_table.js') }}"></script>
   <script type=text/javascript src="{{ url_for('static', filename='js/passwd_checker.js') }}"></script>
-  {% elif request.path == url_for('credentials') or request.path == url_for('credentials_post') %}
-  <script type=text/javascript src="{{ url_for('static', filename='js/checkbox_enabler.js') }}"></script>{% endif %}
+  {% elif request.path == url_for('credentials') %}
+  <script type=text/javascript src="{{ url_for('static', filename='js/tab_table.js') }}"></script>
+  <script type=text/javascript src="{{ url_for('static', filename='js/delete_confirm.js') }}"></script>
+  {% endif %}
 </body>
 
 </html>

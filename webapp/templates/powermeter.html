@@ -1,25 +1,151 @@
 {% extends 'base.html' %}
 {% block title %}IDA Platform • Power Meter{% endblock %}
 {% block content %}
-
-<div class="header_powermeter">
-<br><br><br><h2>Power Meter <small class="text-muted" style="font-size:18px">Default Configuration</small></h2><br></div><br>
-
-<div class="box_powermeter"><br>
-  <table>
-    <tr>
-      <th>Name</th>
-      <th>Starting Address</th>
-      <th>Quantity</th>
-    </tr>
-    {% for defaultrow in data %}
-    <tr>
-      <td>{{ defaultrow[0] }}</td>
-      <td>{{ defaultrow[1] }}</td>
-      <td>{{ defaultrow[2] }}</td>
-    </tr>
-    {% endfor %}
-  </table>
+<div class="box-header">
+  <br><br><br>
+  <h2>Power Meter</h2><br>
 </div>
 
+<!DOCTYPE html>
+<html>
+
+<body>
+
+  <!-- tab -->
+
+  <!-- alert -->
+  {% with messages = get_flashed_messages() %}
+  {% if messages[0] == "Updated Successfully" or "successfully" in messages[0] %}
+  <br>
+  <div class="success_item">
+    {{ messages[0] }}
+    <span class="closebtn" onclick="this.parentElement.style.display='none';">&times;</span>
+  </div>
+  {% elif messages %}
+  <br>
+  <div class="alert_item">
+    {{ messages[0] }}
+    <span class="closebtn" onclick="this.parentElement.style.display='none';">&times;</span>
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <!-- tab -->
+  <div class="tab">
+    {% for tabrow in powermeterTab %}
+    <button class='{{ tabrow[0] }}' onclick="openTab(event, 'table{{ tabrow[1] }}')">{{ tabrow[2] }}</button>
+    {% endfor %}
+    <button class='tablinks' onclick="openTab(event, 'newpowermeter')">New Device</button>
+  </div>
+
+  <!-- elements in tab -->
+  {% for datarow in powermeter %}
+  {% if datarow[2] == "tablinks active" %}
+  <br><br>
+  <div id="table{{ datarow[0] }}" class="tabcontent" style="display: block">
+    {% else %}
+    <div id="table{{ datarow[0] }}" class="tabcontent">
+      {% endif %}
+      <div id="delete_config" class="delete_config">
+        <form class="form-inline" method="POST" onclick="clicked(event)" action="/powermeter/delete">
+          <td><button type="submit" class="btn" name="metername" value={{ datarow[1] }}>Delete</button></td>
+        </form>
+      </div>
+      <form method="POST" action="/powermeter">
+        <div class="form-group" style="align-items: center;justify-content:center;display: flex">
+          <table style="width:40%">
+            <tr>
+              <td style="width:70%;border: none"><label for="devicename{{ datarow[0] }}">Powermeter Name:&nbsp;</label>
+                <input type="text" id="metername" name="metername" maxlength="30" value={{ datarow[1] }}>
+                <input type="text" id="oldmetername" name="oldmetername" maxlength="30" value={{ datarow[1] }} hidden>
+              </td>
+              <td style="border: none"><label for="urconnect">uRCONNECT:&nbsp;&nbsp;</label>
+                <select name="urconnect" id="urconnect">
+                {% for name in urconnect %}
+                {% if name[0] == datarow[3] %}
+                  <option value={{ name[0] }}>{{ name[0] }}</option>
+                {% endif %}
+                {% endfor %}
+                  <option value="none">None</option>
+                <!-- then print other model that not selected -->
+                {% for name in urconnect %}
+                {% if name[0] != datarow[3] %}
+                  <option value={{ name[0] }}>{{ name[0] }}</option>
+                {% endif %}
+                {% endfor %}
+                </select>
+              </td>
+            </tr>
+          </table>
+        </div>
+        <br>
+        <!--<div class="info" style="border: 1px">Test</div>-->
+        <br>
+        <div class="addresslist" style="align-items: center;justify-content:center;display: flex">
+          <table style="width:60%">
+            <tr>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Starting Address</th>
+              <th>Data Type</th>
+              <th>Multiplier</th>
+              <th>Unit</th>
+            </tr>
+            {% for address in powermeterAddress %}
+            {% if datarow[1] == address[6] %}
+            <!-- print if got same powermeter -->
+            <tr>
+              <!-- change name parameter -->
+              {% if address[7] != "00" %}
+                <td style="width:30%"><input type="text" id="name" name="name{{ address[0] }}" maxlength="100" value='{{ address[1] }}' ></td>
+                <td style="width:30%"><select id="type" name="type{{ address[0] }}">{% include 'type_selector.html' %}</select></td>
+                <td style="width:30%"><input type="text" id="startaddr" name="startaddr{{ address[0] }}" maxlength="30" value={{ address[2] }} ></td>
+                <td style="width:30%"><select id="datatype" name="datatype{{ address[0] }}">{% include 'datatype_selector.html' %}</select></td>
+                <td style="width:30%"><input type="text" id="multiplier" name="multiplier{{ address[0] }}" maxlength="30" value={{ address[8] }} ></td>
+                <td style="width:30%"><input type="text" id="unit" name="unit{{ address[0] }}" maxlength="20" value='{{ address[9] }}' ></td>
+              {% else %}
+                <td style="width:30%"><input type="text" id="name" name="name{{ address[0] }}" maxlength="100"></td>
+                <td style="width:30%"><select id="type" name="type{{ address[0] }}">{% include 'type_selector.html' %}</select></td>
+                <td style="width:30%"><input type="text" id="startaddr" name="startaddr{{ address[0] }}" maxlength="30"></td>
+                <td style="width:30%"><select id="datatype" name="datatype{{ address[0] }}">{% include 'datatype_selector.html' %}</select></td>
+                <td style="width:30%"><input type="text" id="multiplier" name="multiplier{{ address[0] }}" maxlength="30"></td>
+                <td style="width:30%"><input type="text" id="unit" name="unit{{ address[0] }}" maxlength="20"></td>
+              {% endif %}
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </table>
+        </div><br><br><br><br>
+        <div id="submit_config" class="submit_config">
+          <button type="submit" class="btn" value="submit1">Update</button>
+        </div>
+      </form>
+    </div>
+    {% endfor %}
+
+    <div id="newpowermeter" class="tabcontent">
+      <form method="POST" action="/powermeter/add">
+        <div class="form-group" style="align-items: center;justify-content:center;display: flex">
+          <table style="width:40%">
+            <tr>
+              <!-- style="border: none" -->
+              <td style="width:70%; border: none"><label for="powermetername">Powermeter Name:&nbsp;</label>
+                <input type="text" id="powermetername" name="powermetername" maxlength="30" value="IDA">
+              </td>
+              <td style="border: none"><label for="newurconnect">uRCONNECT:&nbsp;&nbsp;</label><select name="newurconnect" id="newurconnect">
+                {% for name in urconnect %}
+                <option value={{ name[0] }}>{{ name[0] }}</option>
+                {% endfor %}
+                <option value="none">None</option>
+              </select></td>
+            </tr>
+          </table>
+        </div>
+        <div id="submit_config" class="submit_config">
+          <button type="submit" class="btn" value="submit1">Add Powermeter</button>
+        </div>
+        </form>
+    </div>
+
+</html>
 {% endblock %}

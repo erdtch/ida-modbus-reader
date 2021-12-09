@@ -28,7 +28,7 @@
   <!-- tab -->
   <div class="tab">
     {% for tabrow in tab %}
-    <button class='{{ tabrow[0] }}' onclick="openTab(event, '{{ tabrow[1] }}')">{{ tabrow[2] }}</button>
+    <button class='{{ tabrow[0] }}' onclick="openTab(event, 'unitid{{ tabrow[1] }}')">{{ tabrow[2] }}</button>
     {% endfor %}
     <button class='tablinks' onclick="openTab(event, 'newdevice')">New Device</button>
   </div>
@@ -54,51 +54,66 @@
   {% for datarow in data %}
   {% if datarow[5] == "tablinks active" %}
   <br><br>
-  <div id={{ datarow[7] }} class="tabcontent" style="display: block">
+  <div id="unitid{{ datarow[0] }}" class="tabcontent" style="display: block">
     {% else %}
-    <div id={{ datarow[7] }} class="tabcontent">
+    <div id="unitid{{ datarow[0] }}" class="tabcontent">
       {% endif %}
       <div id="delete_config" class="delete_config">
-        <form class="form-inline" method="POST" onclick="clicked(event)" action="/deleteconfig">
-          <td><button type="submit" class="btn" name="ipaddr" value={{ datarow[2] }}>Delete</button></td>
-          <td><input type="text" name="current_devicename" value={{ datarow[6] }} hidden></input></td>
+        <form class="form-inline" method="POST" onclick="clicked(event)" action="/index/delete">
+          <td><button type="submit" class="btn" name="urconnect" value={{ datarow[6] }}>Delete</button></td>
         </form>
       </div>
       <form method="POST" action="/index">
         <div class="config" style="align-items: center;justify-content:center;display: flex;">
-          <table cellspacing="0" cellpadding="0" style="width: 65%">
+          <table cellspacing="0" cellpadding="0" style="width: 85%">
             <tr style="border">
-              <td style="width: 34%;border: none"><label for={{ datarow[13] }}>Device Name:&nbsp;</label>
-                <input type="text" id="devicename" name={{ datarow[13] }} onblur="validate()" maxlength="30" value={{ datarow[6] }}>
+              <td style="width: 25%;border: none"><label for="devicename{{ datarow[0] }}">Device Name:&nbsp;</label>
+                <input type="text" id="devicename" name="devicename{{ datarow[0] }}" onblur="validate()" maxlength="30" value={{ datarow[6] }}>
                 <div id="devicename_alert">&nbsp;</div>
               </td>
-              <td style="width: 25%;border: none"><label for={{ datarow[8] }}>IP Address:&nbsp;</label>
-                <input type="text" id="ipaddress" name={{ datarow[8] }} style="width: 45%" maxlength="15" onblur="validate()" value={{ datarow[2] }}>
+              <td style="width: 19%;border: none"><label for="ip{{ datarow[0] }}">IP Address:&nbsp;</label>
+                <input type="text" id="ipaddress" name="ip{{ datarow[0] }}" style="width: 45%" maxlength="15" onblur="validate()" value={{ datarow[2] }}>
                 <div id="ipaddress_alert">&nbsp;</div>
               </td>
-              <td style="width: 15%;border: none"><label for={{ datarow[9] }}>Unit ID:&nbsp;</label>
-                <input type="text" id="unitid" name={{ datarow[9] }} style="width: 30%" maxlength="3" onblur="validate()" value={{ datarow[1] }}>
+              <td style="width: 11%;border: none"><label for="id_unitid{{ datarow[0] }}">Unit ID:&nbsp;</label>
+                <input type="text" id="unitid" name="id_unitid{{ datarow[0] }}" style="width: 30%" maxlength="3" onblur="validate()" value={{ datarow[1] }}>
                 <div id="unitid_alert">&nbsp;</div>
               </td>
-              <td style="width: 16%;border: none"><label for="interval">Interval :&nbsp;</label>
+              <td style="width: 11%;border: none"><label for="interval">Interval :&nbsp;</label>
                 <input type="text" id="interval" name="interval" style="width: 30%" maxlength="5" onblur="validate()" value={{ interval }}>
                 <div id="unitid_alert">&nbsp;</div>
               </td>
+
+              <td style="width: 25%;border: none"><label for="nexpieauth">NEXPIE:&nbsp;</label><select name="nexpieauth{{ datarow[0] }}" id="nexpieauth">
+                {% for nexpieauth in credentials %}
+                {% if nexpieauth[0] == datarow[7] %}
+                  <option value={{ nexpieauth[0] }}>{{ nexpieauth[0] }}</option>
+                {% endif %}
+                {% endfor %}
+                  <option value="none">None</option>
+                <!-- then print other model that not selected -->
+                {% for nexpieauth in credentials %}
+                {% if nexpieauth[0] != datarow[7] %}
+                  <option value={{ nexpieauth[0] }}>{{ nexpieauth[0] }}</option>
+                {% endif %}
+                {% endfor %}
+              </select></td>
+
               <td style="width: 10%;border: none">
                 {% if datarow[4] == "enabled" %}
-                <input type="checkbox" id="status" name={{ datarow[10] }} value="enabled" checked>
+                <input type="checkbox" id="status" name="checkbox{{ datarow[0] }}" value="enabled" checked>
                 {% else %}
-                <input type="checkbox" id="status" name={{ datarow[10] }} value="enabled">
+                <input type="checkbox" id="status" name="checkbox{{ datarow[0] }}" value="enabled">
                 {% endif %}
                 <!-- need database that contains sensors name -->
-                <label for={{ datarow[10] }}> Enable?</label><br>
+                <label for="checkbox{{ datarow[0] }}"> Enable?</label><br>
               </td>
             </tr>
           </table>
         </div>
-        <input type="text" id={{ datarow[11] }} name={{ datarow[11] }} maxlength="15" value={{ datarow[1] }} hidden>
-        <input type="text" id={{ datarow[12] }} name={{ datarow[12] }} maxlength="15" value={{ datarow[2] }} hidden>
-        <input type="text" id={{ datarow[14] }} name={{ datarow[14] }} maxlength="15" value={{ datarow[6] }} hidden>
+        <input type="text" id="oldunitid{{ datarow[0] }}" name="oldunitid{{ datarow[0] }}" maxlength="15" value={{ datarow[1] }} hidden>
+        <input type="text" id="oldip{{ datarow[0] }}" name="oldip{{ datarow[0] }}" maxlength="15" value={{ datarow[2] }} hidden>
+        <input type="text" id="oldname{{ datarow[0] }}" name="oldname{{ datarow[0] }}" maxlength="15" value={{ datarow[6] }} hidden>
 
         <br>
         <div class="addresslist" style="align-items: center;justify-content:center;display: flex">
@@ -107,29 +122,36 @@
               <th>Module</th>
               <th>Channel</th>
               <th>Card Type</th>
-              <th>Name</th>
               <th>Starting Address</th>
               <th>Quantity</th>
+              <th>&nbsp;✓&nbsp;</th>
+              <th>Name</th>
+              <th>Unit</th>
             </tr>
             {% for row in result %}
-            {% if datarow[2] == row[8] %}
+            {% if datarow[6] == row[8] %}
             <!-- print if got same ip address-->
             <tr>
               <!-- change name parameter -->
-              <td><input type="text" id="position" name={{ row[9] }} maxlength="30" value={{ row[2] }} hidden>{{ row[2] }}</td>
-              <td><input type="text" id="channel" name={{ row[10] }} maxlength="30" value={{ row[3] }} hidden>{{ row[3] }}</td>
+              <td><input type="text" id="position" name="module{{ row[0] }}" maxlength="30" value={{ row[2] }} hidden>{{ row[2] }}</td>
+              <td><input type="text" id="channel" name="channel{{ row[0] }}" maxlength="30" value={{ row[3] }} hidden>{{ row[3] }}</td>
               {% if row[3] == "1" %}
-              <td style="border-bottom: none"><select name={{ row[17] }} id="type" hidden>
-                  {% include 'type_selector.html' %}
-                </select>{{ row[17] }}</td>
+              <!-- cardtype -->
+                <td style="border-bottom: none">{{ row[10] }}</td>
               {% elif row[3] == "8" %}
               <td style="border-top: none;border-bottom-color: #dddddd;"></td>
               {% else %}
               <td style="border: none"></td>
               {% endif %}
-              <td style="width:30%"><input type="text" id="name" name={{ row[12] }} maxlength="30" value={{ row[5] }} ></td>
-              <td><input type="text" id="start" name={{ row[13] }} maxlength="4" value={{ row[6] }} hidden>{{ row[16] }}</td>
-              <td><input type="text" id="end" name={{ row[14] }} maxlength="4" value={{ row[7] }} hidden>{{ row[7] }}</td>
+              <td><input type="text" id="start" name="start{{ row[0] }}" maxlength="4" value={{ row[6] }} hidden>{{ row[9] }}</td>
+              <td><input type="text" id="end" name="quantity{{ row[0] }}" maxlength="4" value={{ row[7] }} hidden>{{ row[7] }}</td>
+              {% if row[12] == "enabled" %}
+                <td><input type="checkbox" id="status" name="checkbox{{ row[0] }}" value="enabled" checked></td>
+              {% else %}
+                <td><input type="checkbox" id="status" name="checkbox{{ row[0] }}" value="enabled"></td>
+              {% endif %}
+              <td style="width:30%"><input type="text" id="name" name="name{{ row[0] }}" maxlength="30" value={{ row[5] }} ></td>
+              <td><input type="text" id="unit" name="unit{{ row[0] }}" maxlength="15" value={{ row[11] }}></td>
             </tr>
             {% endif %}
             {% endfor %}
@@ -143,7 +165,7 @@
     {% endfor %}
 
     <div id="newdevice" class="tabcontent">
-      <form method="POST" action="/newdevice">
+      <form method="POST" action="/index/add">
         <div class="form-group" style="align-items: center;justify-content:center;display: flex">
           <table style="width:60%">
             <tr>
@@ -152,7 +174,7 @@
               </td>
               <td style="border: none"><label for="newip">IP Address:&nbsp;</label>
                 <input type="text" id="newip" name="newip" maxlength="15" value="127.0.0.1">
-              </td >
+              </td>
               <td style="border: none"><label for="newunitid">Unit ID:&nbsp;</label>
                 <input type="text" id="newunitid" name="newunitid" maxlength="15" value="1">
               </td>
@@ -160,6 +182,11 @@
                 <input type="checkbox" id="newcheckbox" name="newcheckbox" value="enabled">
                 <!-- need database that contains sensors name -->
                 <label for="newcheckbox"> Enable?</label><br>
+              </td>
+              <td style="width: 25%;border: none"><label for="newnexpieauth">NEXPIE:&nbsp;</label><select name="newnexpieauth" id="newnexpieauth">
+                {% for nexpieauth in credentials %}
+                  <option value={{ nexpieauth[0] }}>{{ nexpieauth[0] }}</option>
+                {% endfor %}
               </td>
             </tr>
           </table>

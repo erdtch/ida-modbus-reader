@@ -51,6 +51,16 @@ input[type=text]:disabled {
 
 }
 
+.btndisabled{
+  font-weight: 500;
+  color: #fff;
+  background-color: #840000;
+  border-width: 3px;
+  border-style: solid;
+  border-color: #840000;
+
+}
+
 .btn:hover{
   font-weight: 500;
   color: #840000;
