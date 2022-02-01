@@ -49,7 +49,7 @@ def updateChecker():
     import requests
     try:
         #response = requests.get('https://raw.githubusercontent.com/idaplatform/modbus_ida/master/version.txt')
-        response = requests.get('https://raw.githubusercontent.com/tawanmeow/ida-modbus-reader/master/version.txt')
+        response = requests.get('https://raw.githubusercontent.com/erdtch/ida-modbus-reader/master/version.txt')
         # Note: data = version.txt on github | txt = version.txt on your device.
         data = response.text
         data = str(data)
@@ -69,7 +69,7 @@ def updateChecker():
             shutil.rmtree(MODBUS_IDA, ignore_errors=True)
             shutil.rmtree(WEBAPP_FOLDER, ignore_errors=True)
             os.mkdir(WEBAPP_FOLDER)
-            git.Git(CURRENT_DIRECTORY).clone("https://github.com/tawanmeow/ida-modbus-reader.git")
+            git.Git(CURRENT_DIRECTORY).clone("https://github.com/erdtch/ida-modbus-reader.git")
             # Replace old version.txt with new version.txt
             os.remove(VERSION)
             shutil.move(os.path.join(MODBUS_IDA, "version.txt"), CURRENT_DIRECTORY)
