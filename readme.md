@@ -7,8 +7,17 @@
 ## Details
 ### Patch Note
 ```
-- Remake Power meter reader.
-- Remake uRCONNECT reader.
+Dashboard
+- Add APIs Page
+    ├── APIs List
+    ├── Add APIs
+    └── APIs help
+
+DB
+- Create api_endpoint DB
+
+Backend
+- Update payload from APIs Page to Nexpie
 ```
 ### Plan
 ```
