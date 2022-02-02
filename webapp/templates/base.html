@@ -38,6 +38,11 @@
       {% else %}
       <a href={{ url_for('powermeter') }}>Power Meter</a>
       {% endif %}
+      {% if request.path == url_for('apis') %}
+      <a class="active" href={{ url_for('apis') }}>APIs</a>
+      {% else %}
+      <a href={{ url_for('apis') }}>APIs</a>
+      {% endif %}
       {% if request.path == url_for('credentials') %}
       <a class="active" href={{ url_for('credentials') }}>Credentials</a>
       {% else %}
@@ -72,6 +77,8 @@
   {% elif request.path == url_for('credentials') %}
   <script type=text/javascript src="{{ url_for('static', filename='js/tab_table.js') }}"></script>
   <script type=text/javascript src="{{ url_for('static', filename='js/delete_confirm.js') }}"></script>
+  {% elif request.path == url_for('apis')%}
+  <script type=text/javascript src="{{ url_for('static', filename='js/hidden_pic.js') }}"></script>
   {% endif %}
 </body>
 
