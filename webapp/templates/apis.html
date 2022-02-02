@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+{% block title %}IDA Platform • Configuration{% endblock %}
+{% block content %}
+<div class="box-header">
+  <br><br><br>
+  <h2>APIs</h2><br>
+</div>
+
+<!DOCTYPE html>
+<html>
+
+<body>
+  <!-- <div id="toggleButton" class="toggleButton">
+    <button id="urtubutton" class="btn">Help</button>
+  </div>
+  <div id="urtu" class="urtu">
+    <div class="urtu-content">
+      <div class="urtu-header">
+        <span class="close" name="close">&times;</span>
+        <h4>uRCONNECT Connector Chart</h4>
+      </div>
+      <div class="urtu-body" style="align-items: center;justify-content:center;display: flex">
+        <img src="/static/images/position.jpg" width="800" height="650" alt="">
+      </div>
+    </div>
+  </div> -->
+
+  <!-- tab -->
+  <div class="tab">
+    {% for tabrow in tab %}
+    <button class='{{ tabrow[0] }}' onclick="openTab(event, 'unitid{{ tabrow[1] }}')">{{ tabrow[2] }}</button>
+    {% endfor %}
+    <button class='tablinks' onclick="openTab(event, 'newdevice')">New API</button>
+  </div>
+
+  <!-- alert -->
+  {% with messages = get_flashed_messages() %}
+  {% if messages[0] == "Updated Successfully" or "successfully" in messages[0] %}
+  <br>
+  <div class="success_item">
+    {{ messages[0] }}
+    <span class="closebtn" onclick="this.parentElement.style.display='none';">&times;</span>
+  </div>
+  {% elif messages %}
+  <br>
+  <div class="alert_item">
+    {{ messages[0] }}
+    <span class="closebtn" onclick="this.parentElement.style.display='none';">&times;</span>
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <!-- elements in tab -->
+  {% for datarow in data %}
+  {% if datarow[5] == "tablinks active" %}
+  <br><br>
+  <div id="unitid{{ datarow[0] }}" class="tabcontent" style="display: block">
+    {% else %}
+    <div id="unitid{{ datarow[0] }}" class="tabcontent">
+      {% endif %}
+      <div id="delete_config" class="delete_config">
+        <form class="form-inline" method="POST" onclick="clicked(event)" action="/index/delete">
+          <td><button type="submit" class="btn" name="urconnect" value={{ datarow[6] }}>Delete</button></td>
+        </form>
+      </div>
+      <form method="POST" action="/index">
+        <div class="config" style="align-items: center;justify-content:center;display: flex;">
+          <table cellspacing="0" cellpadding="0" style="width: 85%">
+            <tr style="border">
+              <td style="width: 25%;border: none"><label for="devicename{{ datarow[0] }}">API Name:&nbsp;</label>
+                <input type="text" id="devicename" name="devicename{{ datarow[0] }}" onblur="validate()" maxlength="30" value={{ datarow[6] }}>
+                <div id="devicename_alert">&nbsp;</div>
+              </td>
+              <td style="width: 19%;border: none"><label for="ip{{ datarow[0] }}">Endpoint:&nbsp;</label>
+                <input type="text" id="ipaddress" name="ip{{ datarow[0] }}" style="width: 45%" maxlength="15" onblur="validate()" value={{ datarow[2] }}>
+                <div id="ipaddress_alert">&nbsp;</div>
+              </td>
+              <!-- <td style="width: 11%;border: none"><label for="id_unitid{{ datarow[0] }}">Unit ID:&nbsp;</label>
+                <input type="text" id="unitid" name="id_unitid{{ datarow[0] }}" style="width: 30%" maxlength="3" onblur="validate()" value={{ datarow[1] }}>
+                <div id="unitid_alert">&nbsp;</div>
+              </td> -->
+              <td style="width: 11%;border: none"><label for="interval">Interval :&nbsp;</label>
+                <input type="text" id="interval" name="interval" style="width: 30%" maxlength="5" onblur="validate()" value={{ interval }}>
+                <div id="unitid_alert">&nbsp;</div>
+              </td>
+
+              <td style="width: 25%;border: none"><label for="nexpieauth">NEXPIE:&nbsp;</label><select name="nexpieauth{{ datarow[0] }}" id="nexpieauth">
+                {% for nexpieauth in credentials %}
+                {% if nexpieauth[0] == datarow[7] %}
+                  <option value={{ nexpieauth[0] }}>{{ nexpieauth[0] }}</option>
+                {% endif %}
+                {% endfor %}
+                  <option value="none">None</option>
+                <!-- then print other model that not selected -->
+                {% for nexpieauth in credentials %}
+                {% if nexpieauth[0] != datarow[7] %}
+                  <option value={{ nexpieauth[0] }}>{{ nexpieauth[0] }}</option>
+                {% endif %}
+                {% endfor %}
+              </select></td>
+
+              <td style="width: 10%;border: none">
+                {% if datarow[4] == "enabled" %}
+                <input type="checkbox" id="status" name="checkbox{{ datarow[0] }}" value="enabled" checked>
+                {% else %}
+                <input type="checkbox" id="status" name="checkbox{{ datarow[0] }}" value="enabled">
+                {% endif %}
+                <!-- need database that contains sensors name -->
+                <label for="checkbox{{ datarow[0] }}"> Enable?</label><br>
+              </td>
+            </tr>
+          </table>
+        </div>
+        <input type="text" id="oldunitid{{ datarow[0] }}" name="oldunitid{{ datarow[0] }}" maxlength="15" value={{ datarow[1] }} hidden>
+        <input type="text" id="oldip{{ datarow[0] }}" name="oldip{{ datarow[0] }}" maxlength="15" value={{ datarow[2] }} hidden>
+        <input type="text" id="oldname{{ datarow[0] }}" name="oldname{{ datarow[0] }}" maxlength="15" value={{ datarow[6] }} hidden>
+
+        <br>
+        <div class="addresslist" style="align-items: center;justify-content:center;display: flex">
+          <table style="width:60%">
+            <tr>
+              <th>Module</th>
+              <th>Channel</th>
+              <th>Card Type</th>
+              <th>Starting Address</th>
+              <th>Quantity</th>
+              <th>&nbsp;✓&nbsp;</th>
+              <th>Name</th>
+              <th>Unit</th>
+            </tr>
+            {% for row in result %}
+            {% if datarow[6] == row[8] %}
+            <!-- print if got same ip address-->
+            <tr>
+              <!-- change name parameter -->
+              <td><input type="text" id="position" name="module{{ row[0] }}" maxlength="30" value={{ row[2] }} hidden>{{ row[2] }}</td>
+              <td><input type="text" id="channel" name="channel{{ row[0] }}" maxlength="30" value={{ row[3] }} hidden>{{ row[3] }}</td>
+              {% if row[3] == "1" %}
+              <!-- cardtype -->
+                <td style="border-bottom: none">{{ row[10] }}</td>
+              {% elif row[3] == "8" %}
+              <td style="border-top: none;border-bottom-color: #dddddd;"></td>
+              {% else %}
+              <td style="border: none"></td>
+              {% endif %}
+              <td><input type="text" id="start" name="start{{ row[0] }}" maxlength="4" value={{ row[6] }} hidden>{{ row[9] }}</td>
+              <td><input type="text" id="end" name="quantity{{ row[0] }}" maxlength="4" value={{ row[7] }} hidden>{{ row[7] }}</td>
+              {% if row[12] == "enabled" %}
+                <td><input type="checkbox" id="status" name="checkbox{{ row[0] }}" value="enabled" checked></td>
+              {% else %}
+                <td><input type="checkbox" id="status" name="checkbox{{ row[0] }}" value="enabled"></td>
+              {% endif %}
+              <td style="width:30%"><input type="text" id="name" name="name{{ row[0] }}" maxlength="30" value={{ row[5] }} ></td>
+              <td><input type="text" id="unit" name="unit{{ row[0] }}" maxlength="15" value={{ row[11] }}></td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </table>
+        </div><br><br><br><br>
+        <div id="submit_config" class="submit_config">
+          <button type="submit" class="btn" value="submit1">Submit</button>
+        </div>
+      </form>
+    </div>
+    {% endfor %}
+
+    <div id="newdevice" class="tabcontent">
+      <form method="POST" action="/apis/add">
+        <div class="form-group" style="align-items: center;justify-content:center;display: flex">
+          <table style="width:60%">
+            <tr>
+              <td style="border: none"><label for="newapiname">API Name:&nbsp;</label>
+                <input type="text" id="newapiname" name="newapiname" maxlength="30" value="API">
+              </td>
+              <td style="border: none"><label for="url">URL:&nbsp;</label>
+                <input type="text" id="url" name="url" maxlength="50" value="127.0.0.1">
+              </td>
+              <td style="border: none"><label for="port">Port:&nbsp;</label>
+                <input type="text" id="port" name="port" maxlength="10" value="5555">
+              </td>
+              <td style="border: none"><label for="path">Path:&nbsp;</label>
+                <input type="text" id="path" name="path"  value="/data/sensor1">
+              </td>
+              <!-- <td style="border: none"><label for="newunitid">Unit ID:&nbsp;</label>
+                <input type="text" id="newunitid" name="newunitid" maxlength="15" value="1">
+              </td> -->
+              <!-- <td style="border: none">
+                <input type="checkbox" id="newcheckbox" name="newcheckbox" value="enabled"> -->
+                <!-- need database that contains sensors name -->
+                <!-- <label for="newcheckbox"> Enable?</label><br>
+              </td> -->
+              <td style="width: 25%;border: none"><label for="newnexpieauth">NEXPIE:&nbsp;</label><select name="newnexpieauth" id="newnexpieauth">
+                {% for nexpieauth in credentials %}
+                  <option value={{ nexpieauth[0] }}>{{ nexpieauth[0] }}</option>
+                {% endfor %}
+              </td>
+            </tr>
+          </table>
+        </div>
+        <div id="submit_config" class="submit_config">
+          <button type="submit" class="btn" value="submit1">Submit</button>
+        </div>
+        </form>
+    </div>
+</html>
+{% endblock %}
