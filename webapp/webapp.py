@@ -876,20 +876,6 @@ def inputCheckerRequestAPI(url, port_url, path_url):
         r.raise_for_status()
         try:
             payload = r.json()
-        #     if 'data' in payload: 
-        #         if 'last_update' in payload:
-        #             if check_date_format(payload['last_update']):
-        #                 return "Passed"
-        #             else:
-        #                 return "Failed: Incorrect data format, should be 'yyyy-mm-dd HH:MM:SS'"
-        #         else:
-        #             return "Failed: 'last_update' is missing from payload"
-                
-        #     else:
-        #         return "Failed: 'data' is missing from payload"
-        # except:
-            # return "Failed: No JSON object could be decoded"
-        #     print(payload)
             if 'data' in payload:
                 if check_payload_type(payload['data']):
                     if 'last_update' in payload:
@@ -1262,7 +1248,6 @@ def apis_add_post():
 def apis_delete_post():
     try:
         apiname = request.form['deletebutton']
-        print(apiname)
         result = deleteAPIs(apiname)
         if result == "success":
             flash('"' + apiname + '" deleted successfully.')
@@ -2027,14 +2012,10 @@ def createSchemaDevice(payload_data, ttlList=None, transformList=None):
         ttlList = ['7d'] * len(payload_data)
     if transformList is None:
         transformList = [''] * len(payload_data)
-    print(payload_data)
-    print(ttlList)
-    print(transformList)
     for name, ttl, trans in zip(payload_data, ttlList, transformList):
         store = {'ttl': ttl}
         transform = {'expression': trans}
         value = str(payload_data[name])
-        print(name, type(eval(value)))
         type_ = [map_data_type[map_] for map_ in map_data_type if isinstance(eval(value), eval(map_))][0]
         operation = {'store': store, 'transform': transform}
         properties.update({
