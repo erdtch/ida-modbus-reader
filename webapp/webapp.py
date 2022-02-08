@@ -4,6 +4,7 @@
     Main Python scripts for web application & modbus TCP/IP reader from NECTEC's uRCONNECT.
 """
 
+import csv
 import os
 import re
 import sys
@@ -36,6 +37,9 @@ CURRENT_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 POWERMETER = os.path.join(CURRENT_DIRECTORY, "powermeter", "")
 POWERMETER_LIBRARY = os.path.join(CURRENT_DIRECTORY, "powermeter")
 APP_CONFIG = os.path.join(os.path.dirname(CURRENT_DIRECTORY), "app_config.ini")
+CARDTYPE_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "csv", "cardtype.csv")
+DATATYPE_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "csv", "datatypes.csv")
+UR_ADDR_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "csv", "urconnect_address.csv")
 KEY = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), "cert", "key.pem")
 CERT = os.path.join(os.path.dirname(os.path.abspath(
@@ -56,6 +60,13 @@ def databaseConnection():
                                db=DB_SCHEMA)
     return connection
 
+def urconnectConnection():
+    connection = MySQL.connect(host=DB_IP,
+                               user=DB_USERNAME,
+                               passwd=DB_PASSWORD,
+                               port=DB_PORT,
+                               db=UR_SCHEMA)
+    return connection
 
 """
     Create table "urconnect_address" if it isn't exists.
@@ -242,6 +253,110 @@ def createConfig():
 
 
 """
+    Create table "cardtype" if it isn't exists.
+    * value = ? 
+    * cardtype = type of card of uRCONNECT
+    * type = ?
+"""
+
+
+def createCardtype():
+    connection = urconnectConnection()
+    cursor = connection.cursor()
+    executeCommand = ("CREATE TABLE IF NOT EXISTS cardtype ("
+                    "value VARCHAR(2) NOT NULL, "
+                    "cardtype VARCHAR(8) NOT NULL, "
+                    "type VARCHAR(2) NOT NULL)"
+                )
+    cursor.execute(executeCommand)
+    connection.commit()
+    executeCommand = "SELECT * FROM cardtype"
+    cursor.execute(executeCommand)
+    result = cursor.fetchall()
+    if result == []:
+        csv_data = csv.reader(file(CARDTYPE_path))
+        for row in csv_data:
+            executeCommand = "INSERT INTO cardtype (value, cardtype, type) VALUES (%s, %s, %s)"
+            cursor.execute(executeCommand, row)
+            connection.commit()
+    try:
+        connection.close()
+    except:
+        pass
+
+
+"""
+    Create table "datatypes" if it isn't exists.
+    * name = ?
+    * symbol = ?
+"""
+
+
+def createDatatypes():
+    connection = urconnectConnection()
+    cursor = connection.cursor()
+    executeCommand = ("CREATE TABLE IF NOT EXISTS datatypes ("
+                    "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+                    "name VARCHAR(33) NOT NULL, "
+                    "symbol VARCHAR(9) NOT NULL)"
+                    )
+    cursor.execute(executeCommand)
+    connection.commit()
+    executeCommand = "SELECT * FROM datatypes"
+    cursor.execute(executeCommand)
+    result = cursor.fetchall()
+    if result == []:
+        csv_data = csv.reader(file(DATATYPE_path))
+        for row in csv_data:
+            executeCommand = "INSERT INTO datatypes (name, symbol) VALUES (%s, %s)"
+            cursor.execute(executeCommand, row)
+            connection.commit()
+    try:
+        connection.close()
+    except:
+        pass
+
+
+"""
+    Create table "urconnect_address" (urconnect_settings DB) if it isn't exists.
+    * type
+    * module
+    * channel
+    * startingAddress
+    * quantity
+    * displayAddress
+"""
+
+
+def createUrconnect_data():
+    connection = urconnectConnection()
+    cursor = connection.cursor()
+    executeCommand = ("CREATE TABLE IF NOT EXISTS urconnect_address ("
+                        "type VARCHAR(2) NOT NULL, "
+                        "module VARCHAR(5) NOT NULL, "
+                        "channel VARCHAR(1) NOT NULL, "
+                        "startingAddress VARCHAR(2) NOT NULL, "
+                        "quantity VARCHAR(1) NOT NULL, "
+                        "displayAddress VARCHAR(5) NOT NULL)"
+                    )
+    cursor.execute(executeCommand)
+    connection.commit()
+    executeCommand = "SELECT * FROM urconnect_address"
+    cursor.execute(executeCommand)
+    result = cursor.fetchall()
+    if result == []:
+        csv_data = csv.reader(file(UR_ADDR_path))
+        for row in csv_data:
+            executeCommand = "INSERT INTO urconnect_address (type, module, channel, startingAddress, quantity, displayAddress) VALUES (%s, %s, %s, %s, %s, %s)"
+            cursor.execute(executeCommand, row)
+            connection.commit()
+    try:
+        connection.close()
+    except:
+        pass
+
+
+"""
     Setup logging for the current module and dependent libraries based on
     values available in config.
 """
@@ -305,6 +420,7 @@ DB_PASSWORD = appconfig.get('SQLALCHEMY_CONFIG', 'password')
 DB_IP = appconfig.get('SQLALCHEMY_CONFIG', 'ip')
 DB_PORT = appconfig.get('SQLALCHEMY_CONFIG', 'port')
 DB_SCHEMA = appconfig.get('SQLALCHEMY_CONFIG', 'schema')
+UR_SCHEMA = appconfig.get('SQLALCHEMY_CONFIG', 'ur_schema')
 NEXPIE_URL = appconfig.get('NEXPIE', 'shadow_url')
 jsondata = []
 
@@ -336,6 +452,21 @@ while initChecker == True:
             createConfig()
             createPowermeter()
             createPowermeterAddress()
+     
+            connection = MySQL.connect(host=DB_IP,
+                                       user=DB_USERNAME,
+                                       passwd=DB_PASSWORD,
+                                       port=DB_PORT)
+            cursor = connection.cursor()
+            executeCommand = "CREATE DATABASE IF NOT EXISTS " + UR_SCHEMA
+            cursor.execute(executeCommand)
+            connection.commit()
+            connection.close()
+
+            createCardtype()
+            createDatatypes()
+            createUrconnect_data()
+
 
             app = Flask(__name__)
             db = SQLAlchemy()
