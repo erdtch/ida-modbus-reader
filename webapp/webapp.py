@@ -2494,9 +2494,14 @@ def payloadPost(dataShadow, nexpieDeviceid, nexpieToken, nexpieSecret):
     response = requests.post(NEXPIE_URL, data=dataShadow,
                              auth=basicAuthCredentials, timeout=5)
     try:
-        logger.info('NEXPIE RestAPI response: ' + str(response.text))
+        if response.ok:
+            logger.info('NEXPIE RestAPI response: SUCCESS' )
     except:
-        pass
+        logger.info('NEXPIE RestAPI response: ' + str(response.text))
+    # try:
+    #     logger.info('NEXPIE RestAPI response: ' + str(response.text))
+    # except:
+    #     pass
 
 
 """
