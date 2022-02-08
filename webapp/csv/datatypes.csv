@@ -1,0 +1,6 @@
+None,none
+"16-bit unsigned integer",uint16
+"32-bit unsigned integer",uint32
+"32-bit floating-point",float32
+"32-bit unsigned integer (swapped)",uint32sw
+"32-bit floating-point (swapped)",float32sw
