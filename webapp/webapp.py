@@ -2307,13 +2307,47 @@ def modbus2Nexpie(addressList, meternameList):
                         payloaddata["data"][urconnectname][metername][addressname]["value"] = data
                         payloaddata["data"][urconnectname][metername][addressname]["unit"] = unit
         now = datetime.now(tz=timezone('Asia/Bangkok'))
-        currentTime = now.strftime("%d/%m/%Y %H:%M:%S")
+        # currentTime = now.strftime("%d/%m/%Y %H:%M:%S")
+        currentTime = now.strftime("%Y-%m-%d %H:%M:%S")
         payloaddata["data"]["currentTime"] = currentTime
+        
+        # ! Add convert json for NEXPIE
+        payloaddata = convertPayloadModbus(data=payloaddata)
+
         nexpieShadow = json.dumps(payloaddata)
         clientid = addressList[nexpiename]["credentials"]["clientid"]
         token = addressList[nexpiename]["credentials"]["token"]
         secret = addressList[nexpiename]["credentials"]["secret"]
         payloadPost(nexpieShadow, clientid, token, secret)
+
+
+"""
+    Convert payloaddata from modbus2Nexpie
+"""
+
+def convertPayloadModbus(data):
+    payloaddata = {
+        "data": {}, 
+        'currentTime': data['currentTime']
+    }
+    module_list = ['module_1down', 'module_2up', 'module_2down', 'module_3up', 'module_3down']
+
+    for primary_d in data.keys():
+        if primary_d != 'currentTime':  
+            for module in module_list:
+                try:
+                    for ch in data[primary_d][module].keys():
+                        value = data[primary_d][module][ch]['value']
+                        unit = data[primary_d][module][ch]['unit']
+                        if value != False:
+                            if unit != 'None':
+                                ch_split = ch.split('_')
+                                d_name = primary_d + '_' + ch_split[-1] + '_' + ch_split[0] + '_(' + str(unit) + ')'
+                                payloaddata['data'][d_name] = value
+                except:
+                    pass
+    
+    return payloaddata
 
 """
     * Get value from APIs
