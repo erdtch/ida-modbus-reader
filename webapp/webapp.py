@@ -2312,7 +2312,7 @@ def modbus2Nexpie(addressList, meternameList):
         payloaddata["data"]["currentTime"] = currentTime
         
         # ! Add convert json for NEXPIE
-        payloaddata = convertPayloadModbus(data=payloaddata)
+        payloaddata = convertPayloadModbus(data=payloaddata['data'])
 
         nexpieShadow = json.dumps(payloaddata)
         clientid = addressList[nexpiename]["credentials"]["clientid"]
@@ -2349,37 +2349,6 @@ def convertPayloadModbus(data):
     
     return payloaddata
 
-"""
-    * Get value from APIs
-"""
-
-"""
-def PayloadAPIs2NexPie(apisList):
-    # payloads = []
-    for api_data in apisList:
-        apiname = api_data['apiname']
-        clientid = api_data['clientid']
-        token = api_data['token']
-        secret = api_data['secret']
-        url = api_data['url']
-        lastupdate_old = api_data['lastupdate']
-        # payload from api
-        payload = requests.get(url)
-        data = payload.json()
-        lastupdate_now = datetime.strptime(data['last_update'], '%Y-%m-%d %H:%M:%S')
-        # payloads.append(data)  
-        if lastupdate_old is None:
-            dataShadow = json.dumps(data)
-            updateTimeStampAPIs(apiname, lastupdate_now)
-            payloadPost(dataShadow, clientid, token, secret)
-        elif lastupdate_now > lastupdate_old:
-            dataShadow = json.dumps(data)
-            updateTimeStampAPIs(apiname, lastupdate_now)
-            payloadPost(dataShadow, clientid, token, secret)
-        else:
-            print("Do nothing")
-            pass
-"""
 def PayloadAPIs2NexPie(apisList):
     new_apisList = []
     for api_data in apisList:
@@ -2531,7 +2500,7 @@ def payloadPost(dataShadow, nexpieDeviceid, nexpieToken, nexpieSecret):
         if response.ok:
             logger.info('NEXPIE RestAPI response: SUCCESS' )
     except:
-        logger.info('NEXPIE RestAPI response: ' + str(response.text))
+        logger.debug('NEXPIE RestAPI response: ' + str(response.text))
     # try:
     #     logger.info('NEXPIE RestAPI response: ' + str(response.text))
     # except:
