@@ -2323,7 +2323,7 @@ def convertPayloadModbus(data):
                         if value != False:
                             if unit != 'None':
                                 ch_split = ch.split('_')
-                                d_name = primary_d + '_' + ch_split[-1] + '_' + ch_split[0] + '_(' + str(unit) + ')'
+                                d_name = primary_d + '_' + ch_split[-1] + '_' + ch_split[0] + '_' + str(unit)
                                 payloaddata['data'][d_name] = value
                 except:
                     pass
