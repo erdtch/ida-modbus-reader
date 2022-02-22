@@ -2480,6 +2480,7 @@ def payloadPost(dataShadow, nexpieDeviceid, nexpieToken, nexpieSecret):
     try:
         if response.ok:
             logger.info('NEXPIE RestAPI response: SUCCESS' )
+            logger.info('NEXPIE RestAPI response: ' + str(response.text))
     except:
         logger.debug('NEXPIE RestAPI response: ' + str(response.text))
     # try:
