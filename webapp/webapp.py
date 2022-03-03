@@ -2517,19 +2517,14 @@ def payloadPost(dataShadow, nexpieDeviceid, nexpieToken, nexpieSecret):
     basicAuthCredentials = (nexpieDeviceid, nexpieToken)  # clientid & token
     response = requests.post(NEXPIE_URL, data=dataShadow,
                              auth=basicAuthCredentials, timeout=5)
-    # try:
-    #     if response.ok:
-    #         logger.info('NEXPIE RestAPI response: SUCCESS' )
-    # except:
-    #     logger.debug('NEXPIE RestAPI response: ' + str(response.text))
     try:
         if response.status_code == 200:
-            logger.info('NEXPIE RestAPI response: ' + str(response.text))
+            logger.info('[MODBUS] NEXPIE RestAPI response: ' + str(response.text))
         else:
-            logger.debug('NEXPIE RestAPI ERROR response with status code: ' + str(response.status_code))
-            logger.debug('NEXPIE RestAPI response: ' + str(response.text))
+            logger.debug('[MODBUS] NEXPIE RestAPI ERROR response with status code: ' + str(response.status_code))
+            logger.debug('[MODBUS] NEXPIE RestAPI response: ' + str(response.text))
     except:
-        logger.debug('NEXPIE RestAPI ERROR response: ' + str(response.text))
+        logger.debug('[MODBUS] NEXPIE RestAPI ERROR response: ' + str(response.text))
 
 def payloadPost_API(dataShadow, nexpieDeviceid, nexpieToken, nexpieSecret):
     basicAuthCredentials = (nexpieDeviceid, nexpieToken)  # clientid & token
@@ -2539,12 +2534,12 @@ def payloadPost_API(dataShadow, nexpieDeviceid, nexpieToken, nexpieSecret):
     try:
         if response.status_code == 200:
             resp_dict = response.json()
-            logger.info('NEXPIE RestAPI response: data_size = ' + str(len(resp_dict['data'])))
+            logger.info('[APIS] NEXPIE RestAPI response: data_size = ' + str(len(resp_dict['data'])))
         else:
-            logger.debug('NEXPIE RestAPI ERROR response with status code: ' + str(response.status_code))
-            logger.debug('NEXPIE RestAPI response: ' + str(response.text))
+            logger.debug('[APIS] NEXPIE RestAPI ERROR response with status code: ' + str(response.status_code))
+            logger.debug('[APIS] NEXPIE RestAPI response: ' + str(response.text))
     except:
-        logger.debug('NEXPIE RestAPI ERROR response: ' + str(response.text))
+        logger.debug('[APIS] NEXPIE RestAPI ERROR response: ' + str(response.text))
         # logger.debug('NEXPIE RestAPI response: ERROR')
 """
     * Application init.
