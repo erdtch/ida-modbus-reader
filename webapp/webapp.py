@@ -1975,18 +1975,17 @@ def threadedModbus():
         flag_modbus_error = False
         flag_api_error = False
         try:
-            # modbus2Nexpie(preparedList, meternameList)
-            pass
+            modbus2Nexpie(preparedList, meternameList)
         except:
             flag_modbus_error = True
             logger.debug(
-                "Modbus reader/APIs error - Please check your configuration or NEXPIE server status.")
+                "Modbus reader error - Please check your configuration or NEXPIE server status.")
         try:
             apiList = PayloadAPIs2NexPie(apiList)
         except:
             flag_api_error = True
             logger.debug(
-                "Modbus reader/APIs error - Please check your APIs endpoint or NEXPIE server status.")
+                "APIs error - Please check your APIs endpoint or NEXPIE server status.")
 
         if flag_modbus_error or flag_api_error:
             time.sleep(15)
