@@ -1976,16 +1976,36 @@ def threadedModbus():
         6. Wait for x second(s) [x = time interval]
     """
     while True:
-        try:
-            TIME_INTERVAL = int(appconfig.get('TIME_INTERVAL', 'timeInterval'))
-            modbus2Nexpie(preparedList, meternameList)
-            apiList = PayloadAPIs2NexPie(apiList)
-            time.sleep(TIME_INTERVAL)
-        except:
-            logger.debug(
-                "Modbus reader/APIs error - Please check your configuration, NEXPIE server status or APIs endpoint.")
-            time.sleep(15)
+        # try:
+        #     TIME_INTERVAL = int(appconfig.get('TIME_INTERVAL', 'timeInterval'))
+        #     modbus2Nexpie(preparedList, meternameList)
+        #     apiList = PayloadAPIs2NexPie(apiList)
+        #     time.sleep(TIME_INTERVAL)
+        # except:
+        #     logger.debug(
+        #         "Modbus reader/APIs error - Please check your configuration, NEXPIE server status or APIs endpoint.")
+        #     time.sleep(15)
 
+        TIME_INTERVAL = int(appconfig.get('TIME_INTERVAL', 'timeInterval'))
+        flag_modbus_error = False
+        flag_api_error = False
+        try:
+            modbus2Nexpie(preparedList, meternameList)
+        except:
+            flag_modbus_error = True
+            logger.debug(
+                "Modbus reader/APIs error - Please check your configuration or NEXPIE server status.")
+        try:
+            apiList = PayloadAPIs2NexPie(apiList)
+        except:
+            flag_api_error = True
+            logger.debug(
+                "Modbus reader/APIs error - Please check your APIs endpoint or NEXPIE server status.")
+
+        if flag_modbus_error or flag_api_error:
+            time.sleep(15)
+        else:
+            time.sleep(TIME_INTERVAL)
 
 def prepareAddress():
     connection = databaseConnection()
