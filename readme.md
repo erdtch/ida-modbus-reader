@@ -5,19 +5,25 @@
 </p>
 
 ## Details
-### Patch Note
+### Patch Note (2.1.1)
 ```
 Dashboard
 - Add APIs Page
     ├── APIs List
     ├── Add APIs
     └── APIs help
-
 DB
-- Create api_endpoint DB
+- Create urconnect_settings Database at initial
+
+Table
+- Create api_endpoint table
+- Create cardtype table (urconnect_settings Database)
+- Create datatypes table (urconnect_settings Database)
+- Create urconnect_address table (urconnect_settings Database)
 
 Backend
 - Update payload from APIs Page to Nexpie
+- Fix large log from NEXPIE response
 ```
 ### Plan
 ```
