@@ -1990,7 +1990,8 @@ def threadedModbus():
         flag_modbus_error = False
         flag_api_error = False
         try:
-            modbus2Nexpie(preparedList, meternameList)
+            # modbus2Nexpie(preparedList, meternameList)
+            pass
         except:
             flag_modbus_error = True
             logger.debug(
@@ -2384,11 +2385,11 @@ def PayloadAPIs2NexPie(apisList):
         lastupdate_now = datetime.strptime(data['last_update'], '%Y-%m-%d %H:%M:%S')
         if lastupdate_old is None:
             dataShadow = json.dumps(data)
-            payloadPost(dataShadow, clientid, token, secret)
+            payloadPost_API(dataShadow, clientid, token, secret)
             lastupdate = lastupdate_now
         elif lastupdate_now > lastupdate_old:
             dataShadow = json.dumps(data)
-            payloadPost(dataShadow, clientid, token, secret)
+            payloadPost_API(dataShadow, clientid, token, secret)
             lastupdate = lastupdate_now
         else:
             lastupdate = lastupdate_old
@@ -2516,17 +2517,35 @@ def payloadPost(dataShadow, nexpieDeviceid, nexpieToken, nexpieSecret):
     basicAuthCredentials = (nexpieDeviceid, nexpieToken)  # clientid & token
     response = requests.post(NEXPIE_URL, data=dataShadow,
                              auth=basicAuthCredentials, timeout=5)
-    try:
-        if response.ok:
-            logger.info('NEXPIE RestAPI response: SUCCESS' )
-    except:
-        logger.debug('NEXPIE RestAPI response: ' + str(response.text))
     # try:
-    #     logger.info('NEXPIE RestAPI response: ' + str(response.text))
+    #     if response.ok:
+    #         logger.info('NEXPIE RestAPI response: SUCCESS' )
     # except:
-    #     pass
+    #     logger.debug('NEXPIE RestAPI response: ' + str(response.text))
+    try:
+        if response.status_code == 200:
+            logger.info('NEXPIE RestAPI response: ' + str(response.text))
+        else:
+            logger.debug('NEXPIE RestAPI ERROR response with status code: ' + str(response.status_code))
+            logger.debug('NEXPIE RestAPI response: ' + str(response.text))
+    except:
+        logger.debug('NEXPIE RestAPI ERROR response: ' + str(response.text))
 
+def payloadPost_API(dataShadow, nexpieDeviceid, nexpieToken, nexpieSecret):
+    basicAuthCredentials = (nexpieDeviceid, nexpieToken)  # clientid & token
+    response = requests.post(NEXPIE_URL, data=dataShadow,
+                             auth=basicAuthCredentials, timeout=5)
 
+    try:
+        if response.status_code == 200:
+            resp_dict = response.json()
+            logger.info('NEXPIE RestAPI response: data_size = ' + str(len(resp_dict['data'])))
+        else:
+            logger.debug('NEXPIE RestAPI ERROR response with status code: ' + str(response.status_code))
+            logger.debug('NEXPIE RestAPI response: ' + str(response.text))
+    except:
+        logger.debug('NEXPIE RestAPI ERROR response: ' + str(response.text))
+        # logger.debug('NEXPIE RestAPI response: ERROR')
 """
     * Application init.
     * Note: create user if not exists. => ping NEXPIE & DB server => start modbusReader thread
